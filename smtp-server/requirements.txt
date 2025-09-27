@@ -1,0 +1,6 @@
+aiosmtpd==1.4.6
+python-dotenv==1.0.0
+email-validator==2.0.0.post2
+pytest==7.4.0
+pytest-asyncio==0.21.1
+aiosmtpd[debug]==1.4.6
