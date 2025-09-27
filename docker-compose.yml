@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: omsurushe/smtp-server:latest
     container_name: smtp-server
     restart: unless-stopped
     ports:
