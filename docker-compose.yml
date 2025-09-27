@@ -10,15 +10,12 @@ services:
     ports:
       - "8025:8025"
     environment:
-      - SMTP_HOST=0.0.0.0
-      - SMTP_PORT=8025
-      - ENABLE_AUTH=${ENABLE_AUTH:-false}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - ENABLE_TLS=${ENABLE_TLS:-false}
-      - TLS_CERTFILE=${TLS_CERTFILE:-}
-      - TLS_KEYFILE=${TLS_KEYFILE:-}
-      - MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE:-26214400}
+      - MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE:-25000}  # 25MB
     volumes:
       - ./data:/app/data
     healthcheck:
