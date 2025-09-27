@@ -1,8 +1,13 @@
 import email
 import logging
+import smtplib
+import ssl
 from email import policy
 from email.parser import BytesParser
-from typing import Optional, Tuple, Dict, Any
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from typing import Optional, Tuple, Dict, Any, List, Union
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +17,47 @@ class EmailHandler:
     def __init__(self, enable_auth: bool = False):
         self.enable_auth = enable_auth
     
+    async def _send_via_gmail(self, msg: email.message.Message) -> bool:
+        """Forward the email via Gmail's SMTP server.
+        
+        Args:
+            msg: The email message to forward
+            
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        try:
+            # Get Gmail SMTP settings from environment
+            smtp_server = os.getenv('GMAIL_SMTP_SERVER', 'smtp.gmail.com')
+            smtp_port = int(os.getenv('GMAIL_SMTP_PORT', '587'))
+            use_tls = os.getenv('GMAIL_USE_TLS', 'true').lower() == 'true'
+            username = os.getenv('SMTP_USERNAME')
+            password = os.getenv('SMTP_PASSWORD')
+            
+            if not username or not password:
+                logger.error("Gmail SMTP credentials not configured")
+                return False
+                
+            # Create a secure SSL context
+            context = ssl.create_default_context()
+            
+            # Connect to Gmail's SMTP server
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                if use_tls:
+                    server.starttls(context=context)
+                
+                # Login to Gmail
+                server.login(username, password)
+                
+                # Send the email
+                server.send_message(msg)
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to forward email via Gmail: {str(e)}")
+            return False
+    
     async def handle_message(self, message: bytes, peer: Tuple[str, int], **kwargs) -> Dict[str, Any]:
         """Process an incoming email message.
         
@@ -20,7 +66,7 @@ class EmailHandler:
             peer: Tuple of (ip, port) of the client
             
         Returns:
-            Dict containing parsed message data
+            Dict containing parsed message data and forwarding status
         """
         try:
             # Parse the email message
@@ -36,6 +82,9 @@ class EmailHandler:
             # Get message body
             text_content, html_content = self._get_message_content(msg)
             
+            # Forward the email via Gmail
+            forward_success = await self._send_via_gmail(msg)
+            
             # Prepare response
             result = {
                 'peer': peer,
@@ -47,6 +96,7 @@ class EmailHandler:
                 'text': text_content,
                 'html': html_content,
                 'headers': dict(msg.items()),
+                'forwarded': forward_success
             }
             
             logger.info(f"Received email from {from_} to {to_list} with subject: {subject}")

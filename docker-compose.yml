@@ -7,19 +7,25 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"  # HTTP API port
+      - "8025:8025"  # SMTP port
     environment:
-      # SMTP Configuration
-      - SMTP_HOST=${SMTP_HOST:-0.0.0.0}
-      - SMTP_PORT=${SMTP_PORT:-8025}
+      # SMTP Server Configuration (listening)
+      - SMTP_HOST=0.0.0.0  # Listen on all interfaces
+      - SMTP_PORT=8025     # Port to listen on
+      - ENABLE_AUTH=true   # Enable SMTP authentication
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - ENABLE_TLS=${ENABLE_TLS:-false}
-      - MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE:-25000}  # 25MB in bytes
+      - ENABLE_TLS=false
+      - MAX_MESSAGE_SIZE=25000
       # HTTP Configuration
       - HTTP_HOST=0.0.0.0
       - HTTP_PORT=8000
       - API_PREFIX=/api/v1
       - DEBUG=${DEBUG:-false}
+      # Gmail SMTP Configuration (for sending emails)
+      - GMAIL_SMTP_SERVER=smtp.gmail.com
+      - GMAIL_SMTP_PORT=587
+      - GMAIL_USE_TLS=true
     volumes:
       - ./data:/app/data
     healthcheck:
