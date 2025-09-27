@@ -43,12 +43,18 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels -r /wheels/requir
 # Copy application code
 COPY --chown=appuser:appuser src/ /app/
 
-# Expose the SMTP port
-EXPOSE 8025
+# Expose the SMTP and HTTP ports
+EXPOSE 8025 8000
 
-# Health check
+# Health check for both SMTP and HTTP services
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD nc -z localhost 8025 || exit 1
+    CMD curl -f http://localhost:8000/health && nc -z localhost 8025 || exit 1
+
+# Set environment variables for the API
+ENV HTTP_HOST=0.0.0.0 \
+    HTTP_PORT=8000 \
+    API_PREFIX=/api/v1 \
+    DEBUG=false
 
 # Run the server
 CMD ["python", "-m", "src.server"]

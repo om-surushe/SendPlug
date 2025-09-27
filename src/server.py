@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import ssl
+import uvicorn
 from typing import Optional, Tuple, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
 
 from aiosmtpd.controller import Controller
 from aiosmtpd.handlers import Message
@@ -9,6 +11,7 @@ from aiosmtpd.smtp import AuthResult, LoginPassword, SMTP as SMTPServer
 
 from .config import Config
 from .handlers import EmailHandler
+from .api import app as api_app
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +97,7 @@ class SMTPServer:
             tls_context=ssl_context,
             decode_data=True,
             enable_SMTPUTF8=True,
-            max_size=self.config.MAX_MESSAGE_SIZE,
+            data_size_limit=self.config.MAX_MESSAGE_SIZE,
         )
         
         # Start the server
@@ -103,26 +106,66 @@ class SMTPServer:
         logger.info(f"TLS: {'Enabled' if self.config.ENABLE_TLS else 'Disabled'}")
         logger.info(f"Authentication: {'Enabled' if self.config.ENABLE_AUTH else 'Disabled'}")
     
-    def stop(self):
         """Stop the SMTP server."""
         if self.controller:
             self.controller.stop()
             logger.info("SMTP server stopped")
 
-async def run_server():
-    """Run the SMTP server."""
+async def run_http_server(host: str = "0.0.0.0", port: int = 8000):
+    """Run the HTTP server with the FastAPI app."""
+    config = uvicorn.Config(
+        api_app,
+        host=host,
+        port=port,
+        log_level="info",
+    )
+    server = uvicorn.Server(config)
+    logger.info(f"HTTP server started on http://{host}:{port}")
+    logger.info(f"API documentation available at http://{host}:{port}/docs")
+    await server.serve()
+    return server
+
+async def run_servers():
+    """Run both SMTP and HTTP servers."""
     config = Config()
-    server = SMTPServer(config)
+    
+    # Start SMTP server in a separate thread
+    smtp_server = SMTPServer(config)
+    smtp_server.start()
+    logger.info(f"SMTP server started on {config.HOST}:{config.PORT}")
     
     try:
-        server.start()
-        while True:
-            await asyncio.sleep(3600)  # Sleep forever
+        # Start HTTP server in the main thread
+        http_server_task = asyncio.create_task(
+            run_http_server(port=config.HTTP_PORT)
+        )
+        
+        # Wait for both servers to complete (they won't unless there's an error)
+        await http_server_task
+        
+    except asyncio.CancelledError:
+        logger.info("Shutting down servers...")
+        smtp_server.stop()
+        if 'http_server_task' in locals():
+            http_server_task.cancel()
+            try:
+                await http_server_task
+            except asyncio.CancelledError:
+                pass
+
+    except Exception as e:
+        logger.error(f"Server error: {e}", exc_info=True)
+        smtp_server.stop()
+        raise
+
+def run_server():
+    """Run the server application."""
+    try:
+        asyncio.run(run_servers())
     except KeyboardInterrupt:
-        logger.info("Shutting down server...")
-    finally:
-        server.stop()
+        logger.info("Servers stopped by user")
+    except Exception as e:
+        logger.error(f"Failed to start servers: {e}", exc_info=True)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(run_server())
+    run_server()

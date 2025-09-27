@@ -8,21 +8,29 @@ services:
     container_name: smtp-server
     restart: unless-stopped
     ports:
-      - "8025:8025"
+      - "8025:8025"  # SMTP port
+      - "8000:8000"  # HTTP API port
     environment:
-      - SMTP_HOST=${SMTP_HOST:-}
-      - SMTP_PORT=${SMTP_PORT:-}
+      # SMTP Configuration
+      - SMTP_HOST=${SMTP_HOST:-0.0.0.0}
+      - SMTP_PORT=${SMTP_PORT:-8025}
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - ENABLE_TLS=${ENABLE_TLS:-false}
-      - MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE:-25000}  # 25MB
+      - MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE:-26214400}  # 25MB in bytes
+      # HTTP Configuration
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=8000
+      - API_PREFIX=/api/v1
+      - DEBUG=${DEBUG:-false}
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "8025"]
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:8000/health && nc -z localhost 8025"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 5s
     networks:
       - smtp-network
 
