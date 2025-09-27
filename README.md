@@ -122,4 +122,4 @@ pytest
 
 ## License
 
-MIT
+Licensing terms have not yet been published. No permission to copy, modify, or redistribute this project is granted until a licence is added.
