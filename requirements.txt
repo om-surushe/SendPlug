@@ -3,8 +3,8 @@ python-dotenv==1.0.0
 email-validator==2.0.0.post2
 pytest==7.4.0
 pytest-asyncio==0.21.1
-aiosmtpd[debug]==1.4.6
-fastapi==0.104.1
-uvicorn==0.24.0
-pydantic==2.4.2
+fastapi==0.95.2
+uvicorn==0.22.0
+pydantic==1.10.7
+python-jose[cryptography]==3.3.0
 python-multipart==0.0.6

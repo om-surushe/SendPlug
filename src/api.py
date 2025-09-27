@@ -1,13 +1,16 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+import logging
+import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
+
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional, Dict, Any, Literal
-import logging
-from datetime import datetime
-import uuid
 
+from .auth import get_current_user
 from .config import Config
 from .handlers import EmailHandler
 
@@ -75,8 +78,8 @@ app = FastAPI(
     title="SMTP Server API",
     description="REST API for the SMTP Server with Swagger documentation",
     version="1.0.0",
-    docs_url=None,  # Disable default docs to customize
-    redoc_url=None,  # Disable default redoc
+    docs_url="/docs",  # Enable Swagger UI at /docs
+    redoc_url="/redoc",  # Enable ReDoc at /redoc
 )
 
 # Add CORS middleware
@@ -118,12 +121,16 @@ async def health_check():
     """
     return {
         "status": "healthy",
-        "version": "1.0.0",
+        "version": "1.0.0"
     }
 
 # Send email endpoint
-@app.post("/api/emails", response_model=EmailResponse, status_code=status.HTTP_202_ACCEPTED)
-async def send_email(email: EmailRequest):
+@app.post("/send-email", response_model=EmailResponse, status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(get_current_user)])
+async def send_email(
+    request: Request,
+    email: EmailRequest,
+    current_user: str = Depends(get_current_user),
+):
     """
     Send an email through the SMTP server
     
@@ -215,28 +222,19 @@ async def send_email(email: EmailRequest):
             }
         }
     except Exception as e:
-        error_msg = f"Failed to send email: {str(e)}"
-        logger.error(error_msg)
-        
-        # Update status to failed
-        update_email_status(
-            message_id,
-            'failed',
-            error=error_msg,
-            details={
-                "error_type": type(e).__name__,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        )
-        
+        logger.error(f"Error processing email: {str(e)}")
+        update_email_status(message_id, 'failed', error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_msg
+            detail=f"Failed to send email: {str(e)}"
         )
 
-# Get email status endpoint
-@app.get("/api/emails/{message_id}", response_model=EmailStatus)
-async def get_email_status(message_id: str):
+@app.get("/emails/{message_id}", response_model=EmailStatus, dependencies=[Depends(get_current_user)])
+async def get_email_status(
+    request: Request,
+    message_id: str,
+    current_user: str = Depends(get_current_user),
+):
     """
     Get the status of a previously sent email by its message ID
     
@@ -251,8 +249,11 @@ async def get_email_status(message_id: str):
     return email_status_store[message_id]
 
 # Example of how to add more endpoints
-@app.get("/api/status")
-async def get_server_status():
+@app.get("/status", dependencies=[Depends(get_current_user)])
+async def get_server_status(
+    request: Request,
+    current_user: str = Depends(get_current_user),
+):
     """
     Get the current status of the SMTP server
     """

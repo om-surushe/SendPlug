@@ -39,15 +39,43 @@ A high-performance SMTP server built with Python and aiosmtpd, designed to run i
    docker-compose up -d --build
    ```
 
-5. The SMTP server will be available on `localhost:8025`
+Authentication
+
+All API endpoints require JWT authentication. Include the token in the `Authorization` header:
+
+```http
+Authorization: Bearer your_jwt_token_here
+{{ ... }}
+
+### Generating Tokens
+
+Use the included script to generate JWT tokens:
+
+```bash
+python generate_token.py
+```
+
+You'll be prompted to enter:
+
+1. User email
+2. User ID (optional, will use email if not provided)
+3. Token validity in days (default: 30)
+
+The token will be printed to the console. Use it in the `Authorization` header for API requests.
+
+## API Endpoints
+
+The following REST API endpoints are available (all require authentication): on `localhost:8025`
 
 ## Configuration
 
 Edit the `.env` file to configure the SMTP server:
 
-- `SMTP_HOST`: Hostname to bind to (default: 0.0.0.0)
 - `SMTP_PORT`: Port to listen on (default: 8025)
 - `ENABLE_AUTH`: Enable SMTP authentication (true/false)
+- `JWT_SECRET_KEY`: Secret key for JWT token generation and validation
+- `JWT_ALGORITHM`: Algorithm for JWT (default: HS256)
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: Token expiration time in minutes (default: 1440 - 24 hours)
 - `SMTP_USERNAME`: Username for authentication
 - `SMTP_PASSWORD`: Password for authentication
 - `ENABLE_TLS`: Enable TLS encryption (true/false)
