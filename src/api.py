@@ -2,12 +2,53 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
-from pydantic import BaseModel, EmailStr
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Optional, Dict, Any, Literal
 import logging
+from datetime import datetime
+import uuid
 
 from .config import Config
 from .handlers import EmailHandler
+
+# In-memory store for email statuses
+email_status_store = {}
+
+class EmailStatus(BaseModel):
+    status: Literal['queued', 'sending', 'sent', 'delivered', 'failed']
+    message_id: str
+    to: List[str]
+    subject: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    details: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+def update_email_status(message_id: str, status: str, error: Optional[str] = None, details: Optional[Dict] = None):
+    """Update the status of an email in the store."""
+    if message_id not in email_status_store:
+        return None
+        
+    email_status = email_status_store[message_id]
+    email_status.status = status
+    email_status.updated_at = datetime.utcnow()
+    if error:
+        email_status.error = error
+    if details:
+        email_status.details = details
+    return email_status
+
+def create_email_status(to: List[str], subject: str) -> EmailStatus:
+    """Create a new email status entry."""
+    message_id = f"{uuid.uuid4().hex}@{Config.HOST}"
+    status_obj = EmailStatus(
+        status='queued',
+        message_id=message_id,
+        to=to,
+        subject=subject
+    )
+    email_status_store[message_id] = status_obj
+    return status_obj
 
 logger = logging.getLogger(__name__)
 
@@ -93,44 +134,121 @@ async def send_email(email: EmailRequest):
     - **bcc**: Optional list of BCC email addresses
     - **html**: Optional HTML content (if not provided, plain text will be used)
     """
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.utils import formatdate
+    import ssl
+    
+    # Create email status entry
+    email_status = create_email_status(email.to, email.subject)
+    message_id = email_status.message_id
+    
+    # Update status to sending
+    update_email_status(message_id, 'sending')
+    
     try:
-        # In a real implementation, you would send the email here
-        # For now, we'll just log it and return a success response
         logger.info(f"Received email request: {email.dict()}")
         
-        # TODO: Implement actual email sending logic using your SMTP server
+        # Create message container
+        msg = MIMEMultipart('alternative')
+        msg['From'] = Config.SMTP_USERNAME
+        msg['To'] = ', '.join(email.to)
+        msg['Subject'] = email.subject
+        msg['Date'] = formatdate(localtime=True)
+        
+        if email.cc:
+            msg['Cc'] = ', '.join(email.cc)
+        
+        # Record the MIME types of both parts - text/plain and text/html
+        part1 = MIMEText(email.body, 'plain')
+        msg.attach(part1)
+        
+        if email.html:
+            part2 = MIMEText(email.html, 'html')
+            msg.attach(part2)
+        
+        # Create secure connection with Gmail's SMTP server
+        smtp_host = 'smtp.gmail.com'
+        smtp_port = 465  # SSL port for Gmail
+        
+        context = ssl.create_default_context()
+        
+        try:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context) as server:
+                # Log in to the SMTP server
+                server.login(Config.SMTP_USERNAME, Config.SMTP_PASSWORD)
+                logger.info(f"Successfully connected to {smtp_host}:{smtp_port}")
+                
+                # Prepare recipients list
+                recipients = email.to.copy()
+                if email.cc:
+                    recipients.extend(email.cc)
+                if email.bcc:
+                    recipients.extend(email.bcc)
+                
+                # Send the email
+                server.send_message(msg, from_addr=Config.SMTP_USERNAME, to_addrs=recipients)
+                logger.info(f"Email sent successfully to {', '.join(recipients)}")
+                
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error occurred: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Error sending email: {str(e)}")
+            raise
+        
+        # Update status to sent
+        update_email_status(message_id, 'sent', details={
+            "recipients": email.to,
+            "subject": email.subject,
+            "timestamp": datetime.utcnow().isoformat()
+        })
         
         return {
             "status": "accepted",
-            "message_id": "mock-message-id-123",
+            "message_id": message_id,
             "details": {
-                "message": "Email queued for sending",
+                "message": "Email sent successfully",
                 "recipients": email.to,
                 "subject": email.subject,
             }
         }
     except Exception as e:
-        logger.error(f"Error sending email: {str(e)}")
+        error_msg = f"Failed to send email: {str(e)}"
+        logger.error(error_msg)
+        
+        # Update status to failed
+        update_email_status(
+            message_id,
+            'failed',
+            error=error_msg,
+            details={
+                "error_type": type(e).__name__,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send email: {str(e)}"
+            detail=error_msg
         )
 
 # Get email status endpoint
-@app.get("/api/emails/{message_id}", response_model=EmailResponse)
+@app.get("/api/emails/{message_id}", response_model=EmailStatus)
 async def get_email_status(message_id: str):
     """
     Get the status of a previously sent email by its message ID
+    
+    - **message_id**: The ID of the email to check status for
     """
-    # TODO: Implement actual status checking logic
-    return {
-        "status": "delivered",
-        "message_id": message_id,
-        "details": {
-            "status": "delivered",
-            "timestamp": "2023-01-01T12:00:00Z",
-        }
-    }
+    if message_id not in email_status_store:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Email with ID {message_id} not found"
+        )
+    
+    return email_status_store[message_id]
 
 # Example of how to add more endpoints
 @app.get("/api/status")

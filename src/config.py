@@ -7,8 +7,12 @@ from typing import Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env.local file first, then .env if it exists
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env.local')
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+else:
+    load_dotenv()  # Fallback to .env if .env.local doesn't exist
 
 class Config:
     """Configuration class for the SMTP server."""
