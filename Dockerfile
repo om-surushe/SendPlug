@@ -29,7 +29,7 @@ COPY --chown=appuser:appuser requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY --chown=appuser:appuser src/ /app/
+COPY --chown=appuser:appuser . /app/
 
 # Expose the SMTP and HTTP ports
 EXPOSE 8025 8000

@@ -2,14 +2,10 @@ version: '3.8'
 
 services:
   smtp-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: omsurushe/smtp-server:latest
     container_name: smtp-server
     restart: unless-stopped
     ports:
-      - "8025:8025"  # SMTP port
       - "8000:8000"  # HTTP API port
     environment:
       # SMTP Configuration
@@ -18,7 +14,7 @@ services:
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - ENABLE_TLS=${ENABLE_TLS:-false}
-      - MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE:-26214400}  # 25MB in bytes
+      - MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE:-25000}  # 25MB in bytes
       # HTTP Configuration
       - HTTP_HOST=0.0.0.0
       - HTTP_PORT=8000
@@ -27,7 +23,7 @@ services:
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "sh", "-c", "curl -f http://localhost:8000/health && nc -z localhost 8025"]
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
