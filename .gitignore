@@ -24,6 +24,7 @@ wheels/
 .venv/
 env/
 ENV/
+.env.local
 
 # IDE
 .idea/
