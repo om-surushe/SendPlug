@@ -82,24 +82,40 @@ class EmailHandler:
             # Get message body
             text_content, html_content = self._get_message_content(msg)
             
-            # Forward the email via Gmail
-            forward_success = await self._send_via_gmail(msg)
-            
-            # Prepare response
+            # Enqueue for async delivery via Celery worker
+            import uuid
+            from .tasks import send_email_task
+            from .status_store import create_status
+
+            message_id = f"{uuid.uuid4().hex}@{peer[0]}"
+            create_status(message_id, to_list, subject)
+            send_email_task.delay(
+                message_id,
+                {
+                    "to": to_list,
+                    "cc": cc_list,
+                    "bcc": bcc_list,
+                    "subject": subject,
+                    "body": text_content or "",
+                    "html": html_content,
+                },
+            )
+
             result = {
-                'peer': peer,
-                'from': from_, 
-                'to': to_list,
-                'cc': cc_list,
-                'bcc': bcc_list,
-                'subject': subject,
-                'text': text_content,
-                'html': html_content,
-                'headers': dict(msg.items()),
-                'forwarded': forward_success
+                "peer": peer,
+                "from": from_,
+                "to": to_list,
+                "cc": cc_list,
+                "bcc": bcc_list,
+                "subject": subject,
+                "text": text_content,
+                "html": html_content,
+                "headers": dict(msg.items()),
+                "message_id": message_id,
+                "queued": True,
             }
-            
-            logger.info(f"Received email from {from_} to {to_list} with subject: {subject}")
+
+            logger.info(f"Queued [{message_id}] from {from_} to {to_list} subject: {subject!r}")
             return result
             
         except Exception as e:

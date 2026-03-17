@@ -105,7 +105,8 @@ class SMTPServer:
         logger.info(f"SMTP server started on {self.config.HOST}:{self.config.PORT}")
         logger.info(f"TLS: {'Enabled' if self.config.ENABLE_TLS else 'Disabled'}")
         logger.info(f"Authentication: {'Enabled' if self.config.ENABLE_AUTH else 'Disabled'}")
-    
+
+    def stop(self):
         """Stop the SMTP server."""
         if self.controller:
             self.controller.stop()

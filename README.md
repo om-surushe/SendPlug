@@ -41,27 +41,45 @@ A high-performance SMTP server built with Python and aiosmtpd, designed to run i
 
 Authentication
 
-All API endpoints require JWT authentication. Include the token in the `Authorization` header:
+All API endpoints (except `/auth/login`) require JWT authentication. Include the token in the `Authorization` header:
 
 ```http
 Authorization: Bearer your_jwt_token_here
-{{ ... }}
+```
 
 ### Generating Tokens
 
-Use the included script to generate JWT tokens:
+**Option 1: Using the API (Recommended)**
+
+Obtain a JWT token by logging in with your admin credentials:
+
+```bash
+curl -X POST http://localhost:8025/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": "your-secure-password"
+  }'
+```
+
+Response:
+
+```json
+{
+  "token": "<shown once>",
+  "user_id": "admin@example.com",
+  "email": "admin@example.com",
+  "expires_in_minutes": 1440
+}
+```
+
+**Option 2: Using the CLI script**
 
 ```bash
 python generate_token.py
 ```
 
-You'll be prompted to enter:
-
-1. User email
-2. User ID (optional, will use email if not provided)
-3. Token validity in days (default: 30)
-
-The token will be printed to the console. Use it in the `Authorization` header for API requests.
+You'll be prompted to enter user email, user ID, and token validity in days.
 
 ## API Endpoints
 

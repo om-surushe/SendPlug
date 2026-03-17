@@ -6,9 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     PATH="/home/appuser/.local/bin:$PATH"
 
-# Install system dependencies
+# Install system dependencies (no build-essential — all Python packages use pre-built wheels)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     curl \
     netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*

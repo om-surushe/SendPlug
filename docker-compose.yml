@@ -1,41 +1,144 @@
-version: '3.8'
+# -------------------------------------------------------------------
+# Production SMTP Server Stack
+#
+# Services:
+#   smtp-api  — aiosmtpd (port 8025) + FastAPI (port 8000)
+#   redis     — message broker + email status store
+#   worker    — Celery workers that actually send emails via Gmail
+#   flower    — Celery monitoring UI (port 5555)
+#
+# Deploy:
+#   cp .env.example .env   # fill in your values
+#   docker compose up -d
+#
+# Scale workers up/down:
+#   docker compose up -d --scale worker=4
+# -------------------------------------------------------------------
+
+x-common-env: &common-env
+  SMTP_HOST: ${SMTP_HOST:-0.0.0.0}
+  SMTP_PORT: ${SMTP_PORT:-8025}
+  ENABLE_AUTH: ${ENABLE_AUTH:-true}
+  SMTP_USERNAME: ${SMTP_USERNAME}
+  SMTP_PASSWORD: ${SMTP_PASSWORD}
+  ENABLE_TLS: ${ENABLE_TLS:-false}
+  MAX_MESSAGE_SIZE: ${MAX_MESSAGE_SIZE:-26214400}
+  HTTP_HOST: ${HTTP_HOST:-0.0.0.0}
+  HTTP_PORT: ${HTTP_PORT:-8000}
+  API_PREFIX: ${API_PREFIX:-/api/v1}
+  DEBUG: ${DEBUG:-false}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+  JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+  ADMIN_EMAIL: ${ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  GMAIL_SMTP_SERVER: ${GMAIL_SMTP_SERVER:-smtp.gmail.com}
+  GMAIL_SMTP_PORT: ${GMAIL_SMTP_PORT:-587}
+  GMAIL_USE_TLS: ${GMAIL_USE_TLS:-true}
+  REDIS_URL: redis://redis:6379/0
 
 services:
-  smtp-server:
-    image: omsurushe/smtp-server:latest
-    container_name: smtp-server
+
+  # ------------------------------------------------------------------
+  # Redis — broker + result backend + status store
+  # ------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: smtp-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - smtp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------------
+  # SMTP intake + HTTP API
+  # ------------------------------------------------------------------
+  smtp-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smtp-api
     restart: unless-stopped
     ports:
-      - "8000:8000"  # HTTP API port
-      - "8025:8025"  # SMTP port
+      - "${SMTP_PORT:-8025}:8025"
+      - "${HTTP_PORT:-8000}:8000"
     environment:
-      # SMTP Server Configuration (listening)
-      - SMTP_HOST=${SMTP_HOST:-0.0.0.0}
-      - SMTP_PORT=${SMTP_PORT:-8025}
-      - ENABLE_AUTH=${ENABLE_AUTH:-true}
-      - SMTP_USERNAME=${SMTP_USERNAME}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - ENABLE_TLS=${ENABLE_TLS:-false}
-      - MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE:-25000}
-      # HTTP Configuration
-      - HTTP_HOST=${HTTP_HOST:-0.0.0.0}
-      - HTTP_PORT=${HTTP_PORT:-8000}
-      - API_PREFIX=${API_PREFIX:-/api/v1}
-      - DEBUG=${DEBUG:-false}
-      # Gmail SMTP Configuration (for sending emails)
-      - GMAIL_SMTP_SERVER=${GMAIL_SMTP_SERVER:-smtp.gmail.com}
-      - GMAIL_SMTP_PORT=${GMAIL_SMTP_PORT:-587}
-      - GMAIL_USE_TLS=${GMAIL_USE_TLS:-true}
-    volumes:
-      - ./data:/app/data
+      <<: *common-env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - smtp-network
     healthcheck:
-      test: ["CMD", "sh", "-c", "curl -f http://localhost:8000/health"]
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8000/health && nc -z localhost 8025"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 15s
+
+  # ------------------------------------------------------------------
+  # Celery workers — send emails in parallel
+  # Scale with: docker compose up -d --scale worker=4
+  # ------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: >
+      celery -A src.tasks.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=celery
+      --hostname=worker@%h
+    environment:
+      <<: *common-env
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - smtp-network
+    healthcheck:
+      test: ["CMD", "celery", "-A", "src.tasks.celery_app", "inspect", "ping", "-d", "worker@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ------------------------------------------------------------------
+  # Flower — Celery monitoring dashboard
+  # Open http://<vm-ip>:5555
+  # ------------------------------------------------------------------
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smtp-flower
+    restart: unless-stopped
+    command: >
+      celery -A src.tasks.celery_app flower
+      --port=5555
+      --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-changeme}
+    ports:
+      - "5555:5555"
+    environment:
+      <<: *common-env
+    depends_on:
+      - redis
+      - worker
+    networks:
+      - smtp-network
+
+volumes:
+  redis-data:
+    driver: local
 
 networks:
   smtp-network:

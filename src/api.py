@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
@@ -10,52 +10,19 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
 
-from .auth import get_current_user
+from .auth import create_access_token, get_current_user
 from .config import Config
 from .handlers import EmailHandler
-
-# In-memory store for email statuses
-email_status_store = {}
-
-class EmailStatus(BaseModel):
-    status: Literal['queued', 'sending', 'sent', 'delivered', 'failed']
-    message_id: str
-    to: List[str]
-    subject: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    details: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-
-def update_email_status(message_id: str, status: str, error: Optional[str] = None, details: Optional[Dict] = None):
-    """Update the status of an email in the store."""
-    if message_id not in email_status_store:
-        return None
-        
-    email_status = email_status_store[message_id]
-    email_status.status = status
-    email_status.updated_at = datetime.utcnow()
-    if error:
-        email_status.error = error
-    if details:
-        email_status.details = details
-    return email_status
-
-def create_email_status(to: List[str], subject: str) -> EmailStatus:
-    """Create a new email status entry."""
-    message_id = f"{uuid.uuid4().hex}@{Config.HOST}"
-    status_obj = EmailStatus(
-        status='queued',
-        message_id=message_id,
-        to=to,
-        subject=subject
-    )
-    email_status_store[message_id] = status_obj
-    return status_obj
+from . import status_store
+from .tasks import send_email_task
 
 logger = logging.getLogger(__name__)
 
-# Pydantic models for request/response validation
+
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
+
 class EmailRequest(BaseModel):
     to: List[EmailStr]
     subject: str
@@ -64,37 +31,69 @@ class EmailRequest(BaseModel):
     bcc: Optional[List[EmailStr]] = None
     html: Optional[str] = None
 
+
 class EmailResponse(BaseModel):
     status: str
     message_id: Optional[str] = None
     details: Optional[Dict[str, Any]] = None
 
+
+class EmailStatus(BaseModel):
+    status: Literal["queued", "sending", "sent", "delivered", "failed"]
+    message_id: str
+    to: List[str]
+    subject: str
+    created_at: str
+    updated_at: str
+    details: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
 class HealthCheck(BaseModel):
     status: str
     version: str
+    redis: str
 
-# Initialize FastAPI app
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    token: str
+    user_id: str
+    email: str
+    expires_in_minutes: int
+
+
+# ---------------------------------------------------------------------------
+# App setup
+# ---------------------------------------------------------------------------
+
 app = FastAPI(
     title="SMTP Server API",
     description="REST API for the SMTP Server with Swagger documentation",
     version="1.0.0",
-    docs_url="/docs",  # Enable Swagger UI at /docs
-    redoc_url="/redoc",  # Enable ReDoc at /redoc
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize handler
 email_handler = EmailHandler(enable_auth=Config.ENABLE_AUTH)
 
-# Custom Swagger UI
+
+# ---------------------------------------------------------------------------
+# Custom Swagger UI (keeps existing behaviour)
+# ---------------------------------------------------------------------------
+
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
     return get_swagger_ui_html(
@@ -103,7 +102,7 @@ async def custom_swagger_ui_html():
         swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
     )
 
-# OpenAPI schema
+
 @app.get("/openapi.json", include_in_schema=False)
 async def get_open_api_endpoint():
     return get_openapi(
@@ -113,150 +112,123 @@ async def get_open_api_endpoint():
         routes=app.routes,
     )
 
-# Health check endpoint
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
 @app.get("/health", response_model=HealthCheck, tags=["Health"])
 async def health_check():
+    """Health check — also verifies Redis connectivity."""
+    redis_status = "ok"
+    try:
+        status_store.get_redis().ping()
+    except Exception as exc:
+        redis_status = f"error: {exc}"
+
+    return {"status": "healthy", "version": "1.0.0", "redis": redis_status}
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+@app.post("/auth/login", response_model=TokenResponse, tags=["Authentication"])
+async def login(login_request: LoginRequest):
     """
-    Health check endpoint to verify the API is running
+    Authenticate with email and password to get a JWT token.
+    Use the returned token as `Authorization: Bearer <token>` on all other endpoints.
     """
+    if login_request.email != Config.ADMIN_EMAIL or login_request.password != Config.ADMIN_PASSWORD:
+        logger.warning(f"Failed login attempt for: {login_request.email}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token_data = {
+        "sub": login_request.email,
+        "email": login_request.email,
+        "created_at": datetime.utcnow().isoformat(),
+        "purpose": "smtp_api_access",
+    }
+    token = create_access_token(
+        token_data,
+        expires_delta=timedelta(minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    logger.info(f"Login successful: {login_request.email}")
+
     return {
-        "status": "healthy",
-        "version": "1.0.0"
+        "token": token,
+        "user_id": login_request.email,
+        "email": login_request.email,
+        "expires_in_minutes": Config.ACCESS_TOKEN_EXPIRE_MINUTES,
     }
 
-# Send email endpoint
-@app.post("/send-email", response_model=EmailResponse, status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(get_current_user)])
+
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/send-email",
+    response_model=EmailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(get_current_user)],
+    tags=["Email"],
+)
 async def send_email(
-    request: Request,
     email: EmailRequest,
     current_user: str = Depends(get_current_user),
 ):
     """
-    Send an email through the SMTP server
-    
-    - **to**: List of recipient email addresses
-    - **subject**: Email subject
-    - **body**: Plain text email body
-    - **cc**: Optional list of CC email addresses
-    - **bcc**: Optional list of BCC email addresses
-    - **html**: Optional HTML content (if not provided, plain text will be used)
+    Queue an email for delivery. Returns immediately with a `message_id`
+    you can use to poll `/emails/{message_id}` for delivery status.
     """
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.utils import formatdate
-    import ssl
-    
-    # Create email status entry
-    email_status = create_email_status(email.to, email.subject)
-    message_id = email_status.message_id
-    
-    # Update status to sending
-    update_email_status(message_id, 'sending')
-    
-    try:
-        logger.info(f"Received email request: {email.dict()}")
-        
-        # Create message container
-        msg = MIMEMultipart('alternative')
-        msg['From'] = Config.SMTP_USERNAME
-        msg['To'] = ', '.join(email.to)
-        msg['Subject'] = email.subject
-        msg['Date'] = formatdate(localtime=True)
-        
-        if email.cc:
-            msg['Cc'] = ', '.join(email.cc)
-        
-        # Record the MIME types of both parts - text/plain and text/html
-        part1 = MIMEText(email.body, 'plain')
-        msg.attach(part1)
-        
-        if email.html:
-            part2 = MIMEText(email.html, 'html')
-            msg.attach(part2)
-        
-        # Create secure connection with Gmail's SMTP server
-        smtp_host = 'smtp.gmail.com'
-        smtp_port = 465  # SSL port for Gmail
-        
-        context = ssl.create_default_context()
-        
-        try:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context) as server:
-                # Log in to the SMTP server
-                server.login(Config.SMTP_USERNAME, Config.SMTP_PASSWORD)
-                logger.info(f"Successfully connected to {smtp_host}:{smtp_port}")
-                
-                # Prepare recipients list
-                recipients = email.to.copy()
-                if email.cc:
-                    recipients.extend(email.cc)
-                if email.bcc:
-                    recipients.extend(email.bcc)
-                
-                # Send the email
-                server.send_message(msg, from_addr=Config.SMTP_USERNAME, to_addrs=recipients)
-                logger.info(f"Email sent successfully to {', '.join(recipients)}")
-                
-        except smtplib.SMTPException as e:
-            logger.error(f"SMTP error occurred: {str(e)}")
-            raise
-        except Exception as e:
-            logger.error(f"Error sending email: {str(e)}")
-            raise
-        
-        # Update status to sent
-        update_email_status(message_id, 'sent', details={
-            "recipients": email.to,
-            "subject": email.subject,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
-        return {
-            "status": "accepted",
-            "message_id": message_id,
-            "details": {
-                "message": "Email sent successfully",
-                "recipients": email.to,
-                "subject": email.subject,
-            }
-        }
-    except Exception as e:
-        logger.error(f"Error processing email: {str(e)}")
-        update_email_status(message_id, 'failed', error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send email: {str(e)}"
-        )
+    message_id = f"{uuid.uuid4().hex}@{Config.HOST}"
+    status_store.create_status(message_id, [str(a) for a in email.to], email.subject)
 
-@app.get("/emails/{message_id}", response_model=EmailStatus, dependencies=[Depends(get_current_user)])
-async def get_email_status(
-    request: Request,
-    message_id: str,
-    current_user: str = Depends(get_current_user),
-):
-    """
-    Get the status of a previously sent email by its message ID
-    
-    - **message_id**: The ID of the email to check status for
-    """
-    if message_id not in email_status_store:
+    send_email_task.delay(
+        message_id,
+        {
+            "to": [str(a) for a in email.to],
+            "cc": [str(a) for a in email.cc] if email.cc else [],
+            "bcc": [str(a) for a in email.bcc] if email.bcc else [],
+            "subject": email.subject,
+            "body": email.body,
+            "html": email.html,
+        },
+    )
+
+    logger.info(f"Queued [{message_id}] for {email.to} by {current_user}")
+    return {
+        "status": "queued",
+        "message_id": message_id,
+        "details": {"recipients": [str(a) for a in email.to], "subject": email.subject},
+    }
+
+
+@app.get(
+    "/emails/{message_id}",
+    response_model=EmailStatus,
+    dependencies=[Depends(get_current_user)],
+    tags=["Email"],
+)
+async def get_email_status(message_id: str):
+    """Get delivery status of a previously queued email."""
+    data = status_store.get_status(message_id)
+    if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Email with ID {message_id} not found"
+            detail=f"Email {message_id} not found",
         )
-    
-    return email_status_store[message_id]
+    return data
 
-# Example of how to add more endpoints
-@app.get("/status", dependencies=[Depends(get_current_user)])
-async def get_server_status(
-    request: Request,
-    current_user: str = Depends(get_current_user),
-):
-    """
-    Get the current status of the SMTP server
-    """
+
+@app.get("/status", dependencies=[Depends(get_current_user)], tags=["Health"])
+async def get_server_status():
+    """Current SMTP server configuration."""
     return {
         "status": "running",
         "smtp_server": {
@@ -265,5 +237,5 @@ async def get_server_status(
             "tls_enabled": Config.ENABLE_TLS,
             "auth_enabled": Config.ENABLE_AUTH,
         },
-        "version": "1.0.0"
+        "version": "1.0.0",
     }

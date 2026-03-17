@@ -32,6 +32,10 @@ class Config:
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours
     
+    # Admin credentials for token generation
+    ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@example.com")
+    ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "change-this-password")
+    
     # Authentication
     SMTP_USERNAME: Optional[str] = os.getenv("SMTP_USERNAME")
     SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD")
@@ -39,9 +43,17 @@ class Config:
     
     # TLS Configuration
     ENABLE_TLS: bool = os.getenv("ENABLE_TLS", "false").lower() == "true"
-    
+
     # Message Handling
     MAX_MESSAGE_SIZE: int = int(os.getenv("MAX_MESSAGE_SIZE", "26214400"))  # 25MB
+
+    # Redis / Queue
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
+
+    # Gmail SMTP (outbound relay)
+    GMAIL_SMTP_SERVER: str = os.getenv("GMAIL_SMTP_SERVER", "smtp.gmail.com")
+    GMAIL_SMTP_PORT: int = int(os.getenv("GMAIL_SMTP_PORT", "587"))
+    GMAIL_USE_TLS: bool = os.getenv("GMAIL_USE_TLS", "true").lower() == "true"
     
     @classmethod
     def validate(cls) -> None:

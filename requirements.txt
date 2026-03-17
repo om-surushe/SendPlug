@@ -16,3 +16,6 @@ PyJWT>=2.0.0
 dnspython>=2.0.0
 idna>=2.0.0
 tomli>=1.0.0
+celery[redis]==5.3.6
+redis==5.0.1
+flower==2.0.1
