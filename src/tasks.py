@@ -1,10 +1,5 @@
-"""
-Celery tasks for async email sending.
-
-Each worker process maintains a thread-local persistent SMTP connection to Gmail,
-reconnecting automatically on failure. Tasks retry up to 3 times with exponential
-backoff on transient SMTP errors.
-"""
+"""Celery delivery tasks with encrypted sender lookup and Gmail-safe throttling."""
+import hashlib
 import logging
 import smtplib
 import ssl
@@ -22,12 +17,7 @@ from .config import Config
 
 logger = get_task_logger(__name__)
 
-celery_app = Celery(
-    "smtp_server",
-    broker=Config.REDIS_URL,
-    backend=Config.REDIS_URL,
-)
-
+celery_app = Celery("smtp_server", broker=Config.REDIS_URL, backend=Config.REDIS_URL)
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
@@ -35,125 +25,142 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
-    # Ack task only after it finishes — safe for retries
     task_acks_late=True,
-    # One task at a time per worker thread — prevents prefetch pile-ups
     worker_prefetch_multiplier=1,
-    # Recycle workers after N tasks to prevent memory leaks
     worker_max_tasks_per_child=200,
 )
 
-# Thread-local SMTP connection: one persistent connection per worker thread
 _local = threading.local()
 
 
-def _create_smtp_connection() -> smtplib.SMTP:
+def _sender_fingerprint(sender: dict) -> str:
+    return hashlib.sha256(
+        f"{sender['email']}:{sender['smtp_host']}:{sender['smtp_port']}:{sender['password']}".encode()
+    ).hexdigest()
+
+
+def _create_smtp_connection(sender: dict) -> smtplib.SMTP:
     context = ssl.create_default_context()
-    server = smtplib.SMTP(Config.GMAIL_SMTP_SERVER, Config.GMAIL_SMTP_PORT, timeout=30)
-    if Config.GMAIL_USE_TLS:
-        server.starttls(context=context)
-    server.login(Config.SMTP_USERNAME, Config.SMTP_PASSWORD)
-    logger.info(
-        f"SMTP connection established to {Config.GMAIL_SMTP_SERVER}:{Config.GMAIL_SMTP_PORT}"
-    )
-    return server
+    client = smtplib.SMTP(sender["smtp_host"], sender["smtp_port"], timeout=30)
+    if sender["use_tls"]:
+        client.starttls(context=context)
+    client.login(sender["email"], sender["password"])
+    logger.info("SMTP connection established for sender %s", sender["id"])
+    return client
 
 
-def _get_smtp_connection() -> smtplib.SMTP:
-    """Return the thread-local SMTP connection, creating or reconnecting as needed."""
-    conn = getattr(_local, "smtp", None)
-    if conn is not None:
+def _get_smtp_connection(sender: dict) -> smtplib.SMTP:
+    cache = getattr(_local, "smtp_connections", {})
+    fingerprint = _sender_fingerprint(sender)
+    cached = cache.get(sender["id"])
+    if cached and cached[0] == fingerprint:
         try:
-            conn.noop()  # lightweight ping
-            return conn
+            cached[1].noop()
+            return cached[1]
         except Exception:
-            _local.smtp = None
+            cache.pop(sender["id"], None)
+    client = _create_smtp_connection(sender)
+    cache[sender["id"]] = (fingerprint, client)
+    _local.smtp_connections = cache
+    return client
 
-    _local.smtp = _create_smtp_connection()
-    return _local.smtp
+
+def _drop_connection(sender_id: str) -> None:
+    cache = getattr(_local, "smtp_connections", {})
+    cached = cache.pop(sender_id, None)
+    if cached:
+        try:
+            cached[1].quit()
+        except Exception:
+            pass
 
 
-def _build_mime_message(payload: dict) -> tuple[MIMEMultipart, list[str]]:
-    """Build a MIME message from the payload dict and return (msg, all_recipients)."""
+def _build_mime_message(payload: dict, sender_email: str) -> tuple[MIMEMultipart, list[str]]:
     msg = MIMEMultipart("alternative")
-    msg["From"] = Config.SMTP_USERNAME
+    msg["From"] = sender_email
     msg["To"] = ", ".join(payload["to"])
     msg["Subject"] = payload["subject"]
     msg["Date"] = formatdate(localtime=True)
-
     if payload.get("cc"):
         msg["Cc"] = ", ".join(payload["cc"])
-
-    msg.attach(MIMEText(payload.get("body", ""), "plain"))
+    if payload.get("unsubscribe_url"):
+        msg["List-Unsubscribe"] = f"<{payload['unsubscribe_url']}>"
+        msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    msg.attach(MIMEText(payload.get("body", ""), "plain", "utf-8"))
     if payload.get("html"):
-        msg.attach(MIMEText(payload["html"], "html"))
-
-    recipients = list(payload["to"])
-    if payload.get("cc"):
-        recipients.extend(payload["cc"])
-    if payload.get("bcc"):
-        recipients.extend(payload["bcc"])
-
+        msg.attach(MIMEText(payload["html"], "html", "utf-8"))
+    recipients = list(payload["to"]) + list(payload.get("cc") or []) + list(payload.get("bcc") or [])
     return msg, recipients
+
+
+def _fail(message_id: str, campaign_id: Optional[str], error: str) -> None:
+    from .status_store import update_status
+    from .storage import complete_campaign_recipient
+
+    update_status(message_id, "failed", error=error)
+    if campaign_id:
+        complete_campaign_recipient(message_id, "failed", error)
 
 
 @celery_app.task(
     bind=True,
     name="tasks.send_email",
     max_retries=3,
-    # Base retry delay in seconds; doubled per retry: 60s, 120s, 240s
     default_retry_delay=60,
+    rate_limit="1/s",
 )
-def send_email_task(self, message_id: str, payload: dict):
-    """
-    Send an email via Gmail SMTP and update its status in Redis.
-
-    payload keys: to, cc, bcc, subject, body, html
-    """
+def send_email_task(
+    self,
+    message_id: str,
+    payload: dict,
+    sender_id: str,
+    campaign_id: Optional[str] = None,
+):
     from .status_store import update_status
+    from .storage import (
+        complete_campaign_recipient,
+        get_sender,
+        reserve_quota,
+    )
 
     try:
-        update_status(message_id, "sending")
-
-        msg, recipients = _build_mime_message(payload)
-
-        # Try sending; reconnect once on connection failure
+        sender = get_sender(sender_id)
+        msg, recipients = _build_mime_message(payload, sender["email"])
+        reserve_quota(sender_id, message_id, len(recipients))
+        update_status(message_id, "sending", details={"sender_id": sender_id})
         try:
-            server = _get_smtp_connection()
-            server.send_message(msg, from_addr=Config.SMTP_USERNAME, to_addrs=recipients)
+            client = _get_smtp_connection(sender)
+            client.send_message(msg, from_addr=sender["email"], to_addrs=recipients)
         except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, OSError):
-            _local.smtp = None
-            server = _get_smtp_connection()
-            server.send_message(msg, from_addr=Config.SMTP_USERNAME, to_addrs=recipients)
-
+            _drop_connection(sender_id)
+            client = _get_smtp_connection(sender)
+            client.send_message(msg, from_addr=sender["email"], to_addrs=recipients)
         update_status(
             message_id,
             "sent",
             details={
                 "recipients": recipients,
+                "sender_id": sender_id,
                 "subject": payload["subject"],
                 "sent_at": datetime.now(timezone.utc).isoformat(),
             },
         )
-        logger.info(f"[{message_id}] sent to {recipients}")
+        if campaign_id:
+            complete_campaign_recipient(message_id, "sent")
+        logger.info("[%s] accepted by Gmail for %s", message_id, recipients)
+        return {"status": "sent", "message_id": message_id}
 
-    except smtplib.SMTPRecipientsRefused as exc:
-        # Hard failure — don't retry bad addresses
-        logger.error(f"[{message_id}] recipients refused: {exc}")
-        update_status(message_id, "failed", error=str(exc))
-
-    except smtplib.SMTPException as exc:
-        # Transient SMTP error — retry with exponential backoff
-        retry_num = self.request.retries + 1
-        countdown = 60 * (2 ** self.request.retries)  # 60, 120, 240
-        logger.warning(f"[{message_id}] SMTP error (attempt {retry_num}): {exc}. Retrying in {countdown}s")
-        update_status(message_id, "queued", error=f"Retry {retry_num}: {exc}")
-        raise self.retry(exc=exc, countdown=countdown)
+    except (KeyError, ValueError, smtplib.SMTPRecipientsRefused) as exc:
+        logger.error("[%s] permanent failure: %s", message_id, exc)
+        _fail(message_id, campaign_id, str(exc))
+        return {"status": "failed", "message_id": message_id, "error": str(exc)}
 
     except Exception as exc:
-        logger.error(f"[{message_id}] unexpected error: {exc}", exc_info=True)
-        if self.request.retries < self.max_retries:
-            countdown = 60 * (2 ** self.request.retries)
-            update_status(message_id, "queued", error=f"Retry {self.request.retries + 1}: {exc}")
-            raise self.retry(exc=exc, countdown=countdown)
-        update_status(message_id, "failed", error=str(exc))
+        if self.request.retries >= self.max_retries:
+            logger.error("[%s] terminal failure: %s", message_id, exc, exc_info=True)
+            _fail(message_id, campaign_id, str(exc))
+            return {"status": "failed", "message_id": message_id, "error": str(exc)}
+        countdown = 60 * (2 ** self.request.retries)
+        update_status(message_id, "queued", error=f"Retry {self.request.retries + 1}: {exc}")
+        logger.warning("[%s] retrying in %ss: %s", message_id, countdown, exc)
+        raise self.retry(exc=exc, countdown=countdown)

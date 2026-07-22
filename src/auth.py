@@ -1,91 +1,71 @@
-"""
-Authentication utilities for the SMTP Server API.
-"""
-from datetime import datetime, timedelta
+"""JWT admin sessions and revocable API-token authentication."""
+from datetime import datetime, timedelta, timezone
 from typing import Optional
-from jose import jwt
-from fastapi import HTTPException, status, Depends, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
 
 from .config import Config
+from .storage import verify_api_token
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    Create a JWT access token.
-    
-    Args:
-        data: Dictionary containing the token claims
-        expires_delta: Optional timedelta for token expiration
-        
-    Returns:
-        str: Encoded JWT token
-    """
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
-    return jwt.encode(
-        to_encode, 
-        Config.JWT_SECRET_KEY, 
-        algorithm=Config.JWT_ALGORITHM
+    now = datetime.now(timezone.utc)
+    payload = data.copy()
+    payload.update(
+        {
+            "exp": now + (expires_delta or timedelta(minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES)),
+            "iat": now,
+        }
     )
+    return jwt.encode(payload, Config.JWT_SECRET_KEY, algorithm=Config.JWT_ALGORITHM)
 
-async def verify_token(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    """
-    Verify and decode a JWT token.
-    
-    Args:
-        request: The incoming request
-        credentials: HTTP Authorization credentials containing the JWT token
-        
-    Returns:
-        dict: Decoded token payload
-        
-    Raises:
-        HTTPException: If token is invalid or expired
-    """
-    # Skip authentication for docs and redoc
-    if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
-        return {}
-        
+
+async def verify_token(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authentication required")
     token = credentials.credentials
-    try:
-        payload = jwt.decode(
-            token,
-            Config.JWT_SECRET_KEY,
-            algorithms=[Config.JWT_ALGORITHM]
-        )
+    if token.startswith("smtp_"):
+        payload = verify_api_token(token)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Invalid or revoked API token")
         return payload
-    except jwt.JWTError as e:
+    try:
+        payload = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=[Config.JWT_ALGORITHM])
+        if payload.get("purpose") != "smtp_admin_session":
+            raise HTTPException(status_code=401, detail="Invalid token purpose")
+        return payload
+    except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
 def get_current_user(payload: dict = Depends(verify_token)) -> str:
-    """
-    Get the current user from the token payload.
-    
-    Args:
-        payload: Decoded JWT token payload
-        
-    Returns:
-        str: User identifier (email or username)
-        
-    Raises:
-        HTTPException: If user is not found in the token
-    """
-    user_identity = payload.get("sub")
-    if not user_identity:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user_identity
+    identity = payload.get("sub")
+    if not identity:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    return identity
+
+
+def get_admin_user(payload: dict = Depends(verify_token)) -> str:
+    if payload.get("purpose") != "smtp_admin_session":
+        raise HTTPException(status_code=403, detail="Administrator session required")
+    return get_current_user(payload)
+
+
+def require_scope(scope: str):
+    def dependency(payload: dict = Depends(verify_token)) -> dict:
+        if payload.get("purpose") != "smtp_admin_session" and scope not in payload.get("scopes", []):
+            raise HTTPException(status_code=403, detail=f"Token requires '{scope}' scope")
+        get_current_user(payload)
+        return payload
+
+    return dependency

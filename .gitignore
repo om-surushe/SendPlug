@@ -33,8 +33,9 @@ ENV/
 *.swo
 *~
 
-# Environment variables
+# Environment variables and mounted secrets
 .env
+secrets/
 
 # Docker
 .docker/
@@ -58,7 +59,10 @@ ENV/
 .coverage
 htmlcov/
 
-# Local development
+# Frontend and local data
+web/node_modules/
+web/dist/
+*.tsbuildinfo
 *.sqlite3
 
 # Local development

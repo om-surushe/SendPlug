@@ -1,51 +1,49 @@
-# -------------------------------------------------------------------
-# Production SMTP Server Stack
-#
-# Services:
-#   smtp-api  — aiosmtpd (port 8025) + FastAPI (port 8000)
-#   redis     — message broker + email status store
-#   worker    — Celery workers that actually send emails via Gmail
-#   flower    — Celery monitoring UI (port 5555)
-#
-# Deploy:
-#   cp .env.example .env   # fill in your values
-#   docker compose up -d
-#
-# Scale workers up/down:
-#   docker compose up -d --scale worker=4
-# -------------------------------------------------------------------
+# SMTP Console: Gmail relay + React admin + Redis/Celery queue.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "25m"
+    max-file: "3"
 
 x-common-env: &common-env
   SMTP_HOST: ${SMTP_HOST:-0.0.0.0}
   SMTP_PORT: ${SMTP_PORT:-8025}
   ENABLE_AUTH: ${ENABLE_AUTH:-true}
-  SMTP_USERNAME: ${SMTP_USERNAME}
-  SMTP_PASSWORD: ${SMTP_PASSWORD}
+  SMTP_AUTH_USERNAME: ${SMTP_AUTH_USERNAME}
+  SMTP_AUTH_PASSWORD: ${SMTP_AUTH_PASSWORD}
   ENABLE_TLS: ${ENABLE_TLS:-false}
   MAX_MESSAGE_SIZE: ${MAX_MESSAGE_SIZE:-26214400}
   HTTP_HOST: ${HTTP_HOST:-0.0.0.0}
   HTTP_PORT: ${HTTP_PORT:-8000}
   API_PREFIX: ${API_PREFIX:-/api/v1}
   DEBUG: ${DEBUG:-false}
-  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+  ADMIN_ORIGIN: ${ADMIN_ORIGIN:-https://smtp.nirmaker.com}
+  PUBLIC_URL: ${PUBLIC_URL:-https://smtp.nirmaker.com}
+  JWT_SECRET_FILE: /run/secrets/jwt_secret
   JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
   ADMIN_EMAIL: ${ADMIN_EMAIL}
   ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-  GMAIL_SMTP_SERVER: ${GMAIL_SMTP_SERVER:-smtp.gmail.com}
-  GMAIL_SMTP_PORT: ${GMAIL_SMTP_PORT:-587}
-  GMAIL_USE_TLS: ${GMAIL_USE_TLS:-true}
+  CREDENTIAL_KEY_FILE: /run/secrets/credential_key
+  API_TOKEN_PEPPER_FILE: /run/secrets/token_pepper
+  DATABASE_PATH: /app/data/app.db
   REDIS_URL: redis://redis:6379/0
 
-services:
+x-runtime: &runtime
+  environment: *common-env
+  volumes:
+    - app-data:/app/data
+  secrets:
+    - credential_key
+    - token_pepper
+    - jwt_secret
 
-  # ------------------------------------------------------------------
-  # Redis — broker + result backend + status store
-  # ------------------------------------------------------------------
+services:
   redis:
     image: redis:7-alpine
     container_name: smtp-redis
     restart: unless-stopped
+    logging: *default-logging
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
@@ -57,20 +55,17 @@ services:
       timeout: 5s
       retries: 5
 
-  # ------------------------------------------------------------------
-  # SMTP intake + HTTP API
-  # ------------------------------------------------------------------
   smtp-api:
+    <<: *runtime
     build:
       context: .
       dockerfile: Dockerfile
     container_name: smtp-api
     restart: unless-stopped
+    logging: *default-logging
     ports:
-      - "${SMTP_PORT:-8025}:8025"
-      - "${HTTP_PORT:-8000}:8000"
-    environment:
-      <<: *common-env
+      - "127.0.0.1:${SMTP_PORT:-8025}:8025"
+      - "127.0.0.1:${HTTP_PORT:-8000}:8000"
     depends_on:
       redis:
         condition: service_healthy
@@ -81,65 +76,73 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
-  # ------------------------------------------------------------------
-  # Celery workers — send emails in parallel
-  # Scale with: docker compose up -d --scale worker=4
-  # ------------------------------------------------------------------
   worker:
+    <<: *runtime
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    logging: *default-logging
     command: >
       celery -A src.tasks.celery_app worker
       --loglevel=info
       --concurrency=4
       --queues=celery
       --hostname=worker@%h
-    environment:
-      <<: *common-env
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - smtp-network
     healthcheck:
-      test: ["CMD", "celery", "-A", "src.tasks.celery_app", "inspect", "ping", "-d", "worker@$$HOSTNAME"]
+      test: ["CMD-SHELL", "celery -A src.tasks.celery_app inspect ping -d worker@$${HOSTNAME} --timeout=5 | grep -q pong"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
 
-  # ------------------------------------------------------------------
-  # Flower — Celery monitoring dashboard
-  # Open http://<vm-ip>:5555
-  # ------------------------------------------------------------------
   flower:
+    <<: *runtime
     build:
       context: .
       dockerfile: Dockerfile
     container_name: smtp-flower
     restart: unless-stopped
+    logging: *default-logging
     command: >
       celery -A src.tasks.celery_app flower
       --port=5555
       --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-changeme}
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5555"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
-      - "5555:5555"
-    environment:
-      <<: *common-env
+      - "127.0.0.1:5555:5555"
     depends_on:
-      - redis
-      - worker
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
     networks:
       - smtp-network
 
 volumes:
   redis-data:
-    driver: local
+  app-data:
 
 networks:
   smtp-network:
     driver: bridge
+
+secrets:
+  credential_key:
+    file: ./secrets/credential_key
+  token_pepper:
+    file: ./secrets/token_pepper
+  jwt_secret:
+    file: ./secrets/jwt_secret

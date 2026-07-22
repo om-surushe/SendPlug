@@ -1,86 +1,78 @@
-import os
 import logging
-from dotenv import load_dotenv
+import os
+from pathlib import Path
 from typing import Optional
 
-# Set up logging
+from dotenv import load_dotenv
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables from .env.local file first, then .env if it exists
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env.local')
-if os.path.exists(env_path):
-    load_dotenv(env_path)
-else:
-    load_dotenv()  # Fallback to .env if .env.local doesn't exist
+root = Path(__file__).resolve().parent.parent
+load_dotenv(root / ".env.local" if (root / ".env.local").exists() else None)
+
+
+def _secret(name: str, file_name: str) -> str:
+    path = os.getenv(file_name)
+    if path and Path(path).exists():
+        value = Path(path).read_text().strip()
+    else:
+        value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"{name} or {file_name} must be configured")
+    return value
+
 
 class Config:
-    """Configuration class for the SMTP server."""
-    
-    # SMTP Server Configuration
-    HOST: str = os.getenv("SMTP_HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("SMTP_PORT", "8025"))
-    
-    # HTTP Server Configuration (for API)
-    HTTP_HOST: str = os.getenv("HTTP_HOST", "0.0.0.0")
-    HTTP_PORT: int = int(os.getenv("HTTP_PORT", "8000"))
-    API_PREFIX: str = os.getenv("API_PREFIX", "/api/v1")
-    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
-    
-    # JWT Authentication
-    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
-    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours
-    
-    # Admin credentials for token generation
-    ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@example.com")
-    ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "change-this-password")
-    
-    # Authentication
-    SMTP_USERNAME: Optional[str] = os.getenv("SMTP_USERNAME")
-    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD")
-    ENABLE_AUTH: bool = os.getenv("ENABLE_AUTH", "false").lower() == "true"
-    
-    # TLS Configuration
-    ENABLE_TLS: bool = os.getenv("ENABLE_TLS", "false").lower() == "true"
+    HOST = os.getenv("SMTP_HOST", "0.0.0.0")
+    PORT = int(os.getenv("SMTP_PORT", "8025"))
+    SMTP_AUTH_USERNAME: Optional[str] = os.getenv("SMTP_AUTH_USERNAME")
+    SMTP_AUTH_PASSWORD: Optional[str] = os.getenv("SMTP_AUTH_PASSWORD")
+    ENABLE_AUTH = os.getenv("ENABLE_AUTH", "true").lower() == "true"
+    ENABLE_TLS = os.getenv("ENABLE_TLS", "false").lower() == "true"
+    TLS_CERTFILE = os.getenv("TLS_CERTFILE", "")
+    TLS_KEYFILE = os.getenv("TLS_KEYFILE", "")
+    MAX_MESSAGE_SIZE = int(os.getenv("MAX_MESSAGE_SIZE", "26214400"))
 
-    # Message Handling
-    MAX_MESSAGE_SIZE: int = int(os.getenv("MAX_MESSAGE_SIZE", "26214400"))  # 25MB
+    HTTP_HOST = os.getenv("HTTP_HOST", "0.0.0.0")
+    HTTP_PORT = int(os.getenv("HTTP_PORT", "8000"))
+    API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
+    DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+    ADMIN_ORIGIN = os.getenv("ADMIN_ORIGIN", "http://localhost:5173")
+    PUBLIC_URL = os.getenv("PUBLIC_URL", ADMIN_ORIGIN).rstrip("/")
 
-    # Redis / Queue
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    JWT_SECRET_KEY = _secret("JWT_SECRET_KEY", "JWT_SECRET_FILE")
+    JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").lower().strip()
+    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
-    # Gmail SMTP (outbound relay)
-    GMAIL_SMTP_SERVER: str = os.getenv("GMAIL_SMTP_SERVER", "smtp.gmail.com")
-    GMAIL_SMTP_PORT: int = int(os.getenv("GMAIL_SMTP_PORT", "587"))
-    GMAIL_USE_TLS: bool = os.getenv("GMAIL_USE_TLS", "true").lower() == "true"
-    
+    REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    DATABASE_PATH = os.getenv("DATABASE_PATH", "/app/data/app.db")
+    CREDENTIAL_KEY_FILE = os.getenv("CREDENTIAL_KEY_FILE", "/run/secrets/credential_key")
+    API_TOKEN_PEPPER_FILE = os.getenv("API_TOKEN_PEPPER_FILE", "/run/secrets/token_pepper")
+
     @classmethod
     def validate(cls) -> None:
-        """Validate the configuration."""
-        # Log SMTP configuration
-        logger.info("SMTP Server Configuration:")
-        logger.info(f"- Host: {cls.HOST}")
-        logger.info(f"- Port: {cls.PORT}")
-        logger.info(f"- TLS Enabled: {cls.ENABLE_TLS}")
-        logger.info(f"- Max Message Size: {cls.MAX_MESSAGE_SIZE / (1024 * 1024):.2f} MB")
-        
-        # Log HTTP configuration
-        logger.info("\nHTTP Server Configuration:")
-        logger.info(f"- Host: {cls.HTTP_HOST}")
-        logger.info(f"- Port: {cls.HTTP_PORT}")
-        logger.info(f"- API Prefix: {cls.API_PREFIX}")
-        logger.info(f"- Debug Mode: {cls.DEBUG}")
-        
-        # Validate authentication
-        if cls.SMTP_USERNAME and cls.SMTP_PASSWORD:
-            logger.info("- Authentication: Enabled")
-        else:
-            logger.warning("- Authentication: Disabled (SMTP_USERNAME and/or SMTP_PASSWORD not set)")
-        
-        # Validate TLS
-        if cls.ENABLE_TLS:
-            logger.warning("TLS is enabled but certificate files must be mounted in the container")
+        if not cls.ADMIN_EMAIL or not cls.ADMIN_PASSWORD:
+            raise RuntimeError("ADMIN_EMAIL and ADMIN_PASSWORD must be configured")
+        if cls.ENABLE_AUTH and (not cls.SMTP_AUTH_USERNAME or not cls.SMTP_AUTH_PASSWORD):
+            raise RuntimeError("SMTP_AUTH_USERNAME and SMTP_AUTH_PASSWORD are required")
+        if cls.ENABLE_TLS and (not cls.TLS_CERTFILE or not cls.TLS_KEYFILE):
+            raise RuntimeError("TLS_CERTFILE and TLS_KEYFILE are required when TLS is enabled")
+        for path in (cls.CREDENTIAL_KEY_FILE, cls.API_TOKEN_PEPPER_FILE):
+            if not Path(path).exists():
+                raise RuntimeError(f"Required secret file is missing: {path}")
+        logger.info(
+            "SMTP=%s:%s auth=%s tls=%s HTTP=%s:%s DB=%s",
+            cls.HOST,
+            cls.PORT,
+            cls.ENABLE_AUTH,
+            cls.ENABLE_TLS,
+            cls.HTTP_HOST,
+            cls.HTTP_PORT,
+            cls.DATABASE_PATH,
+        )
 
-# Validate configuration on import
+
 Config.validate()

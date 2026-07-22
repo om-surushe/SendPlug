@@ -1,58 +1,25 @@
+import hmac
 import logging
+from html import escape
+import smtplib
+import ssl
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.openapi.utils import get_openapi
-from fastapi.security import HTTPBearer
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
-from .auth import create_access_token, get_current_user
+from . import status_store, storage
+from .auth import create_access_token, get_admin_user, require_scope
 from .config import Config
-from .handlers import EmailHandler
-from . import status_store
 from .tasks import send_email_task
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Pydantic models
-# ---------------------------------------------------------------------------
-
-class EmailRequest(BaseModel):
-    to: List[EmailStr]
-    subject: str
-    body: str
-    cc: Optional[List[EmailStr]] = None
-    bcc: Optional[List[EmailStr]] = None
-    html: Optional[str] = None
-
-
-class EmailResponse(BaseModel):
-    status: str
-    message_id: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
-
-
-class EmailStatus(BaseModel):
-    status: Literal["queued", "sending", "sent", "delivered", "failed"]
-    message_id: str
-    to: List[str]
-    subject: str
-    created_at: str
-    updated_at: str
-    details: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-
-
-class HealthCheck(BaseModel):
-    status: str
-    version: str
-    redis: str
 
 
 class LoginRequest(BaseModel):
@@ -60,182 +27,397 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class TokenResponse(BaseModel):
-    token: str
-    user_id: str
-    email: str
-    expires_in_minutes: int
+class EmailRequest(BaseModel):
+    to: List[EmailStr] = Field(min_length=1, max_length=1)
+    subject: str = Field(min_length=1, max_length=998)
+    body: str = ""
+    cc: Optional[List[EmailStr]] = Field(default=None, max_length=10)
+    bcc: Optional[List[EmailStr]] = Field(default=None, max_length=10)
+    html: Optional[str] = None
+    sender_id: Optional[str] = None
 
 
-# ---------------------------------------------------------------------------
-# App setup
-# ---------------------------------------------------------------------------
+class SenderCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    email: EmailStr
+    app_password: str = Field(min_length=8, max_length=128)
+    daily_limit: int = Field(default=400, ge=1, le=2000)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    use_tls: bool = True
+
+
+class SenderUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    email: EmailStr
+    app_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    daily_limit: int = Field(default=400, ge=1, le=2000)
+    active: bool = True
+
+
+class TokenCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    sender_id: str
+    scopes: List[Literal["send", "status"]] = ["send", "status"]
+
+
+class TokenUpdate(TokenCreate):
+    pass
+
+
+class CampaignCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    sender_id: str
+    subject: str = Field(min_length=1, max_length=998)
+    body: str = ""
+    html: Optional[str] = None
+    recipients: List[EmailStr] = Field(min_length=1, max_length=500)
+
 
 app = FastAPI(
-    title="SMTP Server API",
-    description="REST API for the SMTP Server with Swagger documentation",
-    version="1.0.0",
+    title="SMTP Console API",
+    description="Self-hosted Gmail relay, API tokens, and consent-based campaigns",
+    version="2.0.0",
     docs_url="/docs",
-    redoc_url="/redoc",
+    redoc_url=None,
 )
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[Config.ADMIN_ORIGIN],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
-
-email_handler = EmailHandler(enable_auth=Config.ENABLE_AUTH)
-
-
-# ---------------------------------------------------------------------------
-# Custom Swagger UI (keeps existing behaviour)
-# ---------------------------------------------------------------------------
-
-@app.get("/docs", include_in_schema=False)
-async def custom_swagger_ui_html():
-    return get_swagger_ui_html(
-        openapi_url="/openapi.json",
-        title=app.title,
-        swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
-    )
+storage.init_db()
 
 
-@app.get("/openapi.json", include_in_schema=False)
-async def get_open_api_endpoint():
-    return get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
-        routes=app.routes,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Health
-# ---------------------------------------------------------------------------
-
-@app.get("/health", response_model=HealthCheck, tags=["Health"])
-async def health_check():
-    """Health check — also verifies Redis connectivity."""
-    redis_status = "ok"
+@app.get("/health")
+def health_check():
     try:
         status_store.get_redis().ping()
     except Exception as exc:
-        redis_status = f"error: {exc}"
+        raise HTTPException(status_code=503, detail=f"Redis unavailable: {exc}")
+    return {"status": "healthy", "version": "2.0.0", "redis": "ok"}
 
-    return {"status": "healthy", "version": "1.0.0", "redis": redis_status}
 
-
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-@app.post("/auth/login", response_model=TokenResponse, tags=["Authentication"])
-async def login(login_request: LoginRequest):
-    """
-    Authenticate with email and password to get a JWT token.
-    Use the returned token as `Authorization: Bearer <token>` on all other endpoints.
-    """
-    if login_request.email != Config.ADMIN_EMAIL or login_request.password != Config.ADMIN_PASSWORD:
-        logger.warning(f"Failed login attempt for: {login_request.email}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token_data = {
-        "sub": login_request.email,
-        "email": login_request.email,
-        "created_at": datetime.utcnow().isoformat(),
-        "purpose": "smtp_api_access",
-    }
-    token = create_access_token(
-        token_data,
-        expires_delta=timedelta(minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES),
+@app.post("/auth/login")
+def login(payload: LoginRequest, request: Request):
+    redis = status_store.get_redis()
+    rate_key = f"login:{request.client.host if request.client else 'unknown'}"
+    attempts = redis.incr(rate_key)
+    if attempts == 1:
+        redis.expire(rate_key, 300)
+    if attempts > 5:
+        raise HTTPException(status_code=429, detail="Too many login attempts; retry in five minutes")
+    valid = hmac.compare_digest(str(payload.email).lower(), Config.ADMIN_EMAIL) and hmac.compare_digest(
+        payload.password, Config.ADMIN_PASSWORD
     )
-    logger.info(f"Login successful: {login_request.email}")
-
+    if not valid:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    redis.delete(rate_key)
+    token = create_access_token(
+        {"sub": Config.ADMIN_EMAIL, "email": Config.ADMIN_EMAIL, "purpose": "smtp_admin_session"},
+        timedelta(minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
     return {
         "token": token,
-        "user_id": login_request.email,
-        "email": login_request.email,
+        "email": Config.ADMIN_EMAIL,
         "expires_in_minutes": Config.ACCESS_TOKEN_EXPIRE_MINUTES,
     }
 
 
-# ---------------------------------------------------------------------------
-# Email
-# ---------------------------------------------------------------------------
+@app.get("/api/v1/dashboard")
+def dashboard(_: str = Depends(get_admin_user)):
+    return storage.dashboard()
 
-@app.post(
-    "/send-email",
-    response_model=EmailResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(get_current_user)],
-    tags=["Email"],
-)
-async def send_email(
-    email: EmailRequest,
-    current_user: str = Depends(get_current_user),
-):
-    """
-    Queue an email for delivery. Returns immediately with a `message_id`
-    you can use to poll `/emails/{message_id}` for delivery status.
-    """
-    message_id = f"{uuid.uuid4().hex}@{Config.HOST}"
-    status_store.create_status(message_id, [str(a) for a in email.to], email.subject)
 
+@app.get("/api/v1/senders")
+def senders(_: str = Depends(get_admin_user)):
+    return storage.list_senders()
+
+
+@app.post("/api/v1/senders", status_code=201)
+def add_sender(payload: SenderCreate, _: str = Depends(get_admin_user)):
+    try:
+        return storage.create_sender(
+            payload.name,
+            str(payload.email),
+            payload.app_password.replace(" ", ""),
+            payload.daily_limit,
+            payload.smtp_host,
+            payload.smtp_port,
+            payload.use_tls,
+        )
+    except Exception as exc:
+        if "UNIQUE" in str(exc):
+            raise HTTPException(status_code=409, detail="That Gmail sender already exists")
+        raise
+
+
+@app.put("/api/v1/senders/{sender_id}")
+def edit_sender(sender_id: str, payload: SenderUpdate, _: str = Depends(get_admin_user)):
+    try:
+        return storage.update_sender(
+            sender_id,
+            payload.name,
+            str(payload.email),
+            payload.daily_limit,
+            payload.app_password.replace(" ", "") if payload.app_password else None,
+            payload.active,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        if "UNIQUE" in str(exc):
+            raise HTTPException(status_code=409, detail="That Gmail sender already exists")
+        raise
+
+
+@app.post("/api/v1/senders/{sender_id}/test")
+def test_sender(sender_id: str, _: str = Depends(get_admin_user)):
+    try:
+        sender = storage.get_sender(sender_id)
+        context = ssl.create_default_context()
+        with smtplib.SMTP(sender["smtp_host"], sender["smtp_port"], timeout=20) as client:
+            if sender["use_tls"]:
+                client.starttls(context=context)
+            client.login(sender["email"], sender["password"])
+            client.noop()
+        return {"status": "connected"}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Gmail connection failed: {exc}")
+
+
+@app.delete("/api/v1/senders/{sender_id}", status_code=204)
+def remove_sender(sender_id: str, _: str = Depends(get_admin_user)):
+    try:
+        storage.delete_sender(sender_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/api/v1/tokens")
+def tokens(_: str = Depends(get_admin_user)):
+    return storage.list_api_tokens()
+
+
+@app.post("/api/v1/tokens", status_code=201)
+def add_token(payload: TokenCreate, _: str = Depends(get_admin_user)):
+    try:
+        record, raw = storage.create_api_token(payload.name, payload.scopes, payload.sender_id)
+        return record | {"token": raw}
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.put("/api/v1/tokens/{token_id}")
+def edit_token(token_id: str, payload: TokenUpdate, _: str = Depends(get_admin_user)):
+    try:
+        return storage.update_api_token(token_id, payload.name, payload.scopes, payload.sender_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.delete("/api/v1/tokens/{token_id}", status_code=204)
+def revoke_token(token_id: str, _: str = Depends(get_admin_user)):
+    try:
+        storage.revoke_api_token(token_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+def _queue_email(payload: EmailRequest, identity: dict[str, Any]) -> dict[str, Any]:
+    requested_sender = payload.sender_id
+    if identity.get("purpose") == "api_token":
+        token_sender = identity.get("sender_id")
+        if requested_sender and requested_sender != token_sender:
+            raise HTTPException(status_code=403, detail="API token is restricted to another sender")
+        requested_sender = token_sender
+    try:
+        sender = storage.get_sender(requested_sender)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    message_id = f"{uuid.uuid4().hex}@smtp-console"
+    recipients = [str(item) for item in payload.to]
+    status_store.create_status(message_id, recipients, payload.subject, sender["id"])
     send_email_task.delay(
         message_id,
         {
-            "to": [str(a) for a in email.to],
-            "cc": [str(a) for a in email.cc] if email.cc else [],
-            "bcc": [str(a) for a in email.bcc] if email.bcc else [],
-            "subject": email.subject,
-            "body": email.body,
-            "html": email.html,
+            "to": recipients,
+            "cc": [str(item) for item in payload.cc or []],
+            "bcc": [str(item) for item in payload.bcc or []],
+            "subject": payload.subject,
+            "body": payload.body,
+            "html": payload.html,
         },
+        sender["id"],
+        None,
+    )
+    logger.info("Queued %s by %s", message_id, identity.get("sub"))
+    return {"status": "queued", "message_id": message_id, "sender_id": sender["id"]}
+
+
+@app.post("/send-email", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/api/v1/send", status_code=status.HTTP_202_ACCEPTED)
+def send_email(payload: EmailRequest, identity: dict = Depends(require_scope("send"))):
+    return _queue_email(payload, identity)
+
+
+@app.get("/emails/{message_id}")
+@app.get("/api/v1/emails/{message_id}")
+def get_email_status(message_id: str, identity: dict = Depends(require_scope("status"))):
+    result = status_store.get_status(message_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Email not found")
+    if identity.get("purpose") == "api_token" and result.get("sender_id") != identity.get("sender_id"):
+        raise HTTPException(status_code=404, detail="Email not found")
+    return result
+
+
+@app.get("/api/v1/suppressions")
+def suppressions(_: str = Depends(get_admin_user)):
+    return storage.list_suppressions()
+
+
+@app.get("/unsubscribe/{token}", response_class=HTMLResponse, include_in_schema=False)
+def unsubscribe_page(token: str):
+    email = storage.email_from_unsubscribe_token(token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid unsubscribe link")
+    return HTMLResponse(
+        "<!doctype html><meta name='viewport' content='width=device-width'>"
+        "<body style='font:16px system-ui;max-width:520px;margin:80px auto;padding:20px'>"
+        f"<h1>Unsubscribe</h1><p>Stop campaign email to <strong>{escape(email)}</strong>?</p>"
+        f"<form method='post'><button style='padding:12px 18px'>Unsubscribe</button></form></body>"
     )
 
-    logger.info(f"Queued [{message_id}] for {email.to} by {current_user}")
-    return {
-        "status": "queued",
-        "message_id": message_id,
-        "details": {"recipients": [str(a) for a in email.to], "subject": email.subject},
-    }
+
+@app.post("/unsubscribe/{token}", response_class=HTMLResponse, include_in_schema=False)
+def unsubscribe(token: str):
+    email = storage.email_from_unsubscribe_token(token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid unsubscribe link")
+    storage.suppress(email)
+    return HTMLResponse(
+        "<!doctype html><meta name='viewport' content='width=device-width'>"
+        "<body style='font:16px system-ui;max-width:520px;margin:80px auto;padding:20px'>"
+        "<h1>Unsubscribed</h1><p>You will not receive future campaigns from this service.</p></body>"
+    )
 
 
-@app.get(
-    "/emails/{message_id}",
-    response_model=EmailStatus,
-    dependencies=[Depends(get_current_user)],
-    tags=["Email"],
-)
-async def get_email_status(message_id: str):
-    """Get delivery status of a previously queued email."""
-    data = status_store.get_status(message_id)
-    if data is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Email {message_id} not found",
+@app.get("/api/v1/campaigns")
+def campaigns(_: str = Depends(get_admin_user)):
+    return storage.list_campaigns()
+
+
+@app.post("/api/v1/campaigns", status_code=201)
+def add_campaign(payload: CampaignCreate, _: str = Depends(get_admin_user)):
+    try:
+        return storage.create_campaign(
+            payload.name,
+            payload.sender_id,
+            payload.subject,
+            payload.body,
+            payload.html,
+            [str(item) for item in payload.recipients],
         )
-    return data
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
-@app.get("/status", dependencies=[Depends(get_current_user)], tags=["Health"])
-async def get_server_status():
-    """Current SMTP server configuration."""
+@app.put("/api/v1/campaigns/{campaign_id}")
+def edit_campaign(campaign_id: str, payload: CampaignCreate, _: str = Depends(get_admin_user)):
+    try:
+        return storage.update_campaign(
+            campaign_id,
+            payload.name,
+            payload.sender_id,
+            payload.subject,
+            payload.body,
+            payload.html,
+            [str(item) for item in payload.recipients],
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.delete("/api/v1/campaigns/{campaign_id}", status_code=204)
+def remove_campaign(campaign_id: str, _: str = Depends(get_admin_user)):
+    try:
+        storage.delete_campaign(campaign_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/api/v1/campaigns/{campaign_id}")
+def campaign(campaign_id: str, _: str = Depends(get_admin_user)):
+    try:
+        return storage.get_campaign(campaign_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/api/v1/campaigns/{campaign_id}/start", status_code=202)
+def launch_campaign(campaign_id: str, _: str = Depends(get_admin_user)):
+    try:
+        campaign_data = storage.get_campaign(campaign_id)
+        queued = storage.start_campaign(campaign_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    for item in queued:
+        if storage.is_suppressed(item["email"]):
+            storage.complete_campaign_recipient(item["message_id"], "failed", "Recipient suppressed")
+            continue
+        token = storage.unsubscribe_token(item["email"])
+        unsubscribe_url = f"{Config.PUBLIC_URL}/unsubscribe/{token}"
+        text = f"{campaign_data['body']}\n\nUnsubscribe: {unsubscribe_url}"
+        html = campaign_data["html"]
+        if html:
+            html += (
+                "<hr><p style='font-size:12px;color:#777'>"
+                f"<a href='{unsubscribe_url}'>Unsubscribe</a></p>"
+            )
+        status_store.create_status(
+            item["message_id"], [item["email"]], campaign_data["subject"], campaign_data["sender_id"]
+        )
+        send_email_task.delay(
+            item["message_id"],
+            {
+                "to": [item["email"]],
+                "cc": [],
+                "bcc": [],
+                "subject": campaign_data["subject"],
+                "body": text,
+                "html": html,
+                "unsubscribe_url": unsubscribe_url,
+            },
+            campaign_data["sender_id"],
+            campaign_id,
+        )
+    return {"status": "queued", "campaign_id": campaign_id, "messages": len(queued)}
+
+
+@app.get("/status")
+def server_status(_: str = Depends(get_admin_user)):
     return {
         "status": "running",
-        "smtp_server": {
-            "host": Config.HOST,
-            "port": Config.PORT,
-            "tls_enabled": Config.ENABLE_TLS,
-            "auth_enabled": Config.ENABLE_AUTH,
-        },
-        "version": "1.0.0",
+        "smtp": {"host": Config.HOST, "port": Config.PORT, "auth": Config.ENABLE_AUTH},
+        "version": "2.0.0",
     }
+
+
+static_dir = Path(__file__).resolve().parent.parent / "static"
+if static_dir.exists():
+    app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    def frontend_index():
+        return FileResponse(static_dir / "index.html")
