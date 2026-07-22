@@ -2,7 +2,7 @@
 
 This file records deferred product work. Items here are not commitments to a release date.
 
-## Public developer guide and private internal schema
+## Public developer guide and private internal schema ([#2](https://github.com/om-surushe/SMTP-Server/issues/2))
 
 - Replace the sidebar link to FastAPI Swagger with a curated developer guide.
 - Document only the customer-facing send and delivery-status APIs.
@@ -10,14 +10,14 @@ This file records deferred product work. Items here are not commitments to a rel
 - Disable public Swagger, ReDoc, and OpenAPI schema routes in production.
 - Keep internal admin and campaign-management endpoints out of the public guide.
 
-## Product name and identity
+## Product name and identity ([naming #6](https://github.com/om-surushe/SMTP-Server/issues/6), [favicon and identity #1](https://github.com/om-surushe/SMTP-Server/issues/1))
 
 - Research and choose a clearer, memorable, search-friendly product name before replacing the temporary **SMTP Console** label.
 - Check obvious product, domain, repository, package, and trademark conflicts before approving it.
 - Add a favicon and final logo in all required browser/PWA sizes after the name is chosen.
 - Use a descriptive page title and landing-page copy for searches such as “self-hosted email API” and “Gmail SMTP API for developers.”
 
-## Customer authentication and accounts
+## Customer authentication and accounts ([#3](https://github.com/om-surushe/SMTP-Server/issues/3))
 
 - Add managed sign-in, with WorkOS AuthKit as a candidate provider.
 - Support Google sign-in and account recovery.
@@ -25,13 +25,13 @@ This file records deferred product work. Items here are not commitments to a rel
 - Preserve the existing administrator access path for operations and recovery.
 - Add credits and usage accounting only after the account model is stable.
 
-## Service status
+## Service status ([#4](https://github.com/om-surushe/SMTP-Server/issues/4))
 
 - Add a public status page backed by an external uptime monitor.
 - Monitor the public web application, API health, queue, Redis, worker, and Gmail relay checks separately.
 - Show current state, recent incidents, and maintenance notices without exposing sensitive infrastructure details.
 
-## Payments
+## Payments ([#5](https://github.com/om-surushe/SMTP-Server/issues/5))
 
 - Evaluate Dodo Payments for checkout, subscriptions or credit packs, invoices, and taxes.
 - Verify webhook signatures and make payment/credit updates idempotent.
