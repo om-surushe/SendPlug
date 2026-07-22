@@ -10,10 +10,11 @@ This file records deferred product work. Items here are not commitments to a rel
 - Disable public Swagger, ReDoc, and OpenAPI schema routes in production.
 - Keep internal admin and campaign-management endpoints out of the public guide.
 
-## Product identity
+## Product name and identity
 
-- Choose the product name before replacing the temporary **SMTP Console** label.
-- Add a favicon and final logo in all required browser/PWA sizes.
+- Research and choose a clearer, memorable, search-friendly product name before replacing the temporary **SMTP Console** label.
+- Check obvious product, domain, repository, package, and trademark conflicts before approving it.
+- Add a favicon and final logo in all required browser/PWA sizes after the name is chosen.
 - Use a descriptive page title and landing-page copy for searches such as “self-hosted email API” and “Gmail SMTP API for developers.”
 
 ## Customer authentication and accounts
