@@ -20,7 +20,6 @@ WORKDIR /app
 COPY --chown=appuser:appuser requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=appuser:appuser src/ ./src/
-COPY --chown=appuser:appuser generate_token.py send_demo_email.py ./
 COPY --from=web --chown=appuser:appuser /web/dist ./static/
 EXPOSE 8025 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
