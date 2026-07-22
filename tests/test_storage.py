@@ -30,7 +30,7 @@ def test_existing_unscoped_tokens_are_revoked_during_migration(tmp_path):
 
 def test_sender_credentials_are_encrypted(tmp_path):
     fresh_db(tmp_path)
-    sender = storage.create_sender("Primary", "user@example.com", "abcdefghijklmnop", 400)
+    sender = storage.create_sender("Primary", "sender@example.com", "abcdefghijklmnop", 400)
     assert sender["credential_configured"] is True
     assert storage.get_sender(sender["id"])["password"] == "abcdefghijklmnop"
     assert b"abcdefghijklmnop" not in (tmp_path / "app.db").read_bytes()
@@ -38,7 +38,7 @@ def test_sender_credentials_are_encrypted(tmp_path):
 
 def test_api_token_is_sender_scoped_hashed_editable_and_revocable(tmp_path):
     fresh_db(tmp_path)
-    sender = storage.create_sender("Primary", "user@example.com", "abcdefghijklmnop")
+    sender = storage.create_sender("Primary", "sender@example.com", "abcdefghijklmnop")
     record, raw = storage.create_api_token("app", ["send", "status"], sender["id"])
     assert raw.startswith(record["prefix"])
     verified = storage.verify_api_token(raw)
@@ -46,7 +46,7 @@ def test_api_token_is_sender_scoped_hashed_editable_and_revocable(tmp_path):
     assert verified["scopes"] == ["send", "status"]
     updated = storage.update_api_token(record["id"], "renamed", ["status"], sender["id"])
     assert (updated["name"], updated["scopes"], updated["sender_email"]) == (
-        "renamed", ["status"], "user@example.com"
+        "renamed", ["status"], "sender@example.com"
     )
     assert raw.encode() not in (tmp_path / "app.db").read_bytes()
     storage.revoke_api_token(record["id"])
@@ -55,17 +55,17 @@ def test_api_token_is_sender_scoped_hashed_editable_and_revocable(tmp_path):
 
 def test_sender_can_be_updated_without_replacing_password(tmp_path):
     fresh_db(tmp_path)
-    sender = storage.create_sender("Primary", "user@example.com", "abcdefghijklmnop")
-    updated = storage.update_sender(sender["id"], "Renamed", "user@example.com", 350)
+    sender = storage.create_sender("Primary", "sender@example.com", "abcdefghijklmnop")
+    updated = storage.update_sender(sender["id"], "Renamed", "new-sender@example.com", 350)
     assert (updated["name"], updated["email"], updated["daily_limit"]) == (
-        "Renamed", "user@example.com", 350
+        "Renamed", "new-sender@example.com", 350
     )
     assert storage.get_sender(sender["id"])["password"] == "abcdefghijklmnop"
 
 
 def test_quota_is_atomic_and_retry_idempotent(tmp_path):
     fresh_db(tmp_path)
-    sender = storage.create_sender("Primary", "user@example.com", "abcdefghijklmnop", 2)
+    sender = storage.create_sender("Primary", "sender@example.com", "abcdefghijklmnop", 2)
     assert storage.reserve_quota(sender["id"], "message-1", 1) == 1
     assert storage.reserve_quota(sender["id"], "message-1", 1) == 1
     assert storage.reserve_quota(sender["id"], "message-2", 1) == 2
@@ -88,7 +88,7 @@ def test_unsubscribe_token_and_suppression(tmp_path):
 
 def test_campaign_deduplicates_and_aggregates(tmp_path):
     fresh_db(tmp_path)
-    sender = storage.create_sender("Primary", "user@example.com", "abcdefghijklmnop")
+    sender = storage.create_sender("Primary", "sender@example.com", "abcdefghijklmnop")
     campaign = storage.create_campaign(
         "Launch", sender["id"], "Hello", "Body", None,
         ["one@example.com", "one@example.com", "two@example.com"],
@@ -103,7 +103,7 @@ def test_campaign_deduplicates_and_aggregates(tmp_path):
 
 def test_draft_campaign_can_be_updated_and_deleted(tmp_path):
     fresh_db(tmp_path)
-    sender = storage.create_sender("Primary", "user@example.com", "abcdefghijklmnop")
+    sender = storage.create_sender("Primary", "sender@example.com", "abcdefghijklmnop")
     campaign = storage.create_campaign("Draft", sender["id"], "Old", "Body", None, ["one@example.com"])
     updated = storage.update_campaign(
         campaign["id"], "Updated", sender["id"], "New", "New body", None,
