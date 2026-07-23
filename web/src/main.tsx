@@ -41,7 +41,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 function BrandMark({ className = "" }: { className?: string }) {
   return <span className={`brand-mark ${className}`} aria-hidden="true">
-    <img src="/sendplug-app-icon.svg?v=2" alt="" />
+    <img src="/sendplug-app-icon.svg?v=3" alt="" />
   </span>;
 }
 
