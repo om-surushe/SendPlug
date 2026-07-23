@@ -15,6 +15,7 @@ os.environ.update(
         "JWT_SECRET_FILE": str(secrets_dir / "jwt_secret"),
         "ADMIN_EMAIL": "admin@example.com",
         "ADMIN_PASSWORD": "test-password",
+        "DATABASE_PATH": str(secrets_dir / "test.db"),
         "SMTP_AUTH_USERNAME": "smtp-client",
         "SMTP_AUTH_PASSWORD": "smtp-password",
     }
