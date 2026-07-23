@@ -97,10 +97,10 @@ function Layout() {
     <aside className="sidebar">
       <div className="logo"><BrandMark /><strong>SendPlug</strong></div>
       <nav>{nav.map(([id, icon, label]) =>
-        <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}>
+        <button key={id} className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
           <span>{icon}</span>{label}
         </button>)}
-        <a href="/docs" target="_blank" rel="noreferrer"><span>?</span>Developer Docs</a>
+        <a href="/docs" target="_blank" rel="noreferrer"><span>?</span>Docs</a>
       </nav>
       <div className="sidebar-foot"><span className="status-dot" /> SendPlug delivery online</div>
     </aside>
@@ -195,7 +195,7 @@ function TokensView({ notify }: { notify: (s: string) => void }) {
     </section>
     {raw && <div className="secret-box"><div><strong>Copy this token now</strong><p>It cannot be displayed again.</p></div><code>{raw}</code><button onClick={() => { void navigator.clipboard.writeText(raw); notify("Token copied"); }}>Copy</button></div>}
     {error && <ErrorBox error={error} />}
-    <section className="panel"><div className="table-wrap"><table><thead><tr><th>Name</th><th>Gmail sender</th><th>Prefix</th><th>Scopes</th><th>Last used</th><th /></tr></thead><tbody>{items.map(item => <tr key={item.id}><td>{item.name}</td><td><strong>{item.sender_name || "Legacy token"}</strong><small>{item.sender_email || "No sender assigned"}</small></td><td><code>{item.prefix}…</code></td><td>{item.scopes.join(", ")}</td><td>{formatDate(item.last_used_at)}</td><td><div className="row-actions"><button className="ghost" disabled={!!item.revoked_at} onClick={() => setEditing(item)}>Edit</button><button className="danger ghost" disabled={!!item.revoked_at} onClick={() => revoke(item.id)}>{item.revoked_at ? "Revoked" : "Revoke"}</button></div></td></tr>)}</tbody></table></div></section>
+    <section className="panel"><div className="table-wrap" tabIndex={0} role="region" aria-label="API tokens table"><table><thead><tr><th>Name</th><th>Gmail sender</th><th>Prefix</th><th>Scopes</th><th>Last used</th><th /></tr></thead><tbody>{items.map(item => <tr key={item.id}><td>{item.name}</td><td><strong>{item.sender_name || "Legacy token"}</strong><small>{item.sender_email || "No sender assigned"}</small></td><td><code>{item.prefix}…</code></td><td>{item.scopes.join(", ")}</td><td>{formatDate(item.last_used_at)}</td><td><div className="row-actions"><button className="ghost" disabled={!!item.revoked_at} onClick={() => setEditing(item)}>Edit</button><button className="danger ghost" disabled={!!item.revoked_at} onClick={() => revoke(item.id)}>{item.revoked_at ? "Revoked" : "Revoke"}</button></div></td></tr>)}</tbody></table></div></section>
   </>;
 }
 
@@ -237,7 +237,7 @@ function CampaignsView({ notify }: { notify: (s: string) => void }) {
 }
 
 function CampaignTable({ campaigns, actions }: { campaigns: Campaign[]; actions?: (item: Campaign) => ReactNode }) {
-  return <div className="table-wrap"><table><thead><tr><th>Campaign</th><th>Status</th><th>Recipients</th><th>Sent</th><th>Failed</th><th>Created</th>{actions && <th />}</tr></thead><tbody>{campaigns.map(item => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.subject}</small></td><td><span className={`badge ${item.status}`}>{item.status}</span></td><td>{item.total}</td><td>{item.sent}</td><td>{item.failed}</td><td>{formatDate(item.created_at)}</td>{actions && <td>{actions(item)}</td>}</tr>)}</tbody></table></div>;
+  return <div className="table-wrap" tabIndex={0} role="region" aria-label="Campaigns table"><table><thead><tr><th>Campaign</th><th>Status</th><th>Recipients</th><th>Sent</th><th>Failed</th><th>Created</th>{actions && <th />}</tr></thead><tbody>{campaigns.map(item => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.subject}</small></td><td><span className={`badge ${item.status}`}>{item.status}</span></td><td>{item.total}</td><td>{item.sent}</td><td>{item.failed}</td><td>{formatDate(item.created_at)}</td>{actions && <td>{actions(item)}</td>}</tr>)}</tbody></table></div>;
 }
 
 createRoot(document.getElementById("root")!).render(<React.StrictMode>{storedToken() ? <Layout /> : <Login />}</React.StrictMode>);
