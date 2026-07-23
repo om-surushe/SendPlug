@@ -1,4 +1,4 @@
-# SMTP Console: Gmail relay + React admin + Redis/Celery queue.
+# SendPlug: plug-and-play email delivery + dashboard + Redis/Celery queue.
 x-logging: &default-logging
   driver: json-file
   options:

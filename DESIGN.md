@@ -1,7 +1,7 @@
 ---
 version: alpha
-name: ClickHouse-design-analysis
-description: A high-performance database interface anchored on near-pure black canvas with electric yellow as the brand voltage. White typography in confident sans, yellow CTAs, and yellow-text stat numbers carry the brand voice across every page. Code blocks and product UI fragments embed directly in dark cards. The yellow + black pairing (and yellow used scarcely as accent) is the system's signature — brand identity without atmospheric decoration.
+name: SendPlug-design-system
+description: A founder-focused email infrastructure interface anchored on near-pure black with electric yellow as the brand voltage. White typography, direct product copy, modular-mail geometry, and real delivery UI carry the identity across every page. Yellow stays scarce and decisive — brand energy without atmospheric decoration.
 
 colors:
   primary: "#faff69"
@@ -289,9 +289,9 @@ components:
 
 ## Overview
 
-ClickHouse's marketing surface is the highest-contrast interface in the database / data-platform category. The base atmosphere is **near-pure black canvas** (`{colors.canvas}` — #0a0a0a) with **electric yellow** (`{colors.primary}` — #faff69) as the singular brand voltage. The yellow handles every primary CTA, every stat-callout number, every "GET STARTED" badge — used scarcely on individual elements but generously on full-bleed yellow CTA cards. White typography in confident weight-700 sans-serif anchors the editorial body.
+SendPlug uses a high-contrast product surface for founders who build quickly. The base atmosphere is **near-pure black canvas** (`{colors.canvas}` — #0a0a0a) with **electric yellow** (`{colors.primary}` — #faff69) as the singular brand voltage. Yellow handles primary CTAs, delivery-state highlights, and decisive numbers — scarce on individual elements but confident in key conversion moments. White typography in weight-700 sans-serif anchors the editorial body.
 
-The yellow + black pairing is what makes ClickHouse instantly recognizable. Where Snowflake uses cool blue gradients and Databricks uses red + slate, ClickHouse leans hard into one electric yellow that does all the brand work. Code blocks, terminal output, and product UI fragments embed directly in dark `{colors.surface-card}` (#1a1a1a) cards across every page.
+The yellow + black pairing makes SendPlug recognizable without adding decorative gradients. The modular-mail mark carries the product idea: application components snap together around a sending envelope. API examples, delivery analytics, and actual dashboard fragments embed directly in dark `{colors.surface-card}` (#1a1a1a) cards.
 
 Type voice runs **Inter** at confident weights — 700 for display headlines (with negative letter-spacing -1 to -2.5px), 600 for sub-titles and buttons, 400 for body. The system has no display-serif counter-voice; everything is one geometric humanist sans, scaled and weighted for hierarchy.
 
@@ -300,7 +300,7 @@ Type voice runs **Inter** at confident weights — 700 for display headlines (wi
 - Electric yellow primary (`{colors.primary}` — #faff69). Used on primary CTAs, large stat-callout numbers ("2.8k+", "74k+"), and full-bleed yellow CTA bands.
 - Inter at weight 700 for display, weight 600 for sub-titles + buttons, weight 400 for body. No serif counterpoint.
 - Dark surface cards (`{colors.surface-card}` — #1a1a1a) for feature cards, code windows, and product mockups. Cards barely lighter than canvas — color-block contrast is subtle.
-- Code blocks render in JetBrains Mono inside `{colors.surface-card}`. SQL syntax-highlighted in muted blues / yellows / grays.
+- Code blocks render in JetBrains Mono inside `{colors.surface-card}`. API and SDK examples use restrained yellow / white / gray syntax highlighting.
 - Stat numbers in yellow + sans-700 + huge size carry the credibility moment ("779+", "2.8k+", "47k+" community / contributor / star counts).
 - Border radius is hierarchical: `{rounded.md}` (8px) for buttons, `{rounded.lg}` (12px) for content cards. No pill except in tag badges.
 - Section rhythm `{spacing.section}` (96px) between major editorial bands.
@@ -339,13 +339,13 @@ Type voice runs **Inter** at confident weights — 700 for display headlines (wi
 ### Font Family
 The system runs **Inter** for everything — display, body, navigation, buttons, captions. **JetBrains Mono** handles code blocks. The fallback stack walks `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`.
 
-The single-family approach is deliberate: Inter at weight 700 + 600 + 400 covers the entire hierarchy without needing a serif or display counter-voice. The geometric humanist character of Inter at confident bold weight gives ClickHouse a precise, engineered feel that matches the database's performance-first positioning.
+The single-family approach is deliberate: Inter at weight 700 + 600 + 400 covers the hierarchy without a serif or display counter-voice. Its geometric humanist character gives SendPlug a precise but optimistic feel that matches a founder-focused infrastructure product.
 
 ### Hierarchy
 
 | Token | Size | Weight | Line Height | Letter Spacing | Use |
 |---|---|---|---|---|---|
-| `{typography.display-xl}` | 72px | 700 | 1.05 | -2.5px | Homepage h1 ("The leading database for AI") |
+| `{typography.display-xl}` | 72px | 700 | 1.05 | -2.5px | Homepage h1 ("Plug in. Send. See.") |
 | `{typography.display-lg}` | 56px | 700 | 1.1 | -2px | Section heads |
 | `{typography.display-md}` | 40px | 700 | 1.15 | -1.5px | Sub-section heads, CTA-band heads |
 | `{typography.display-sm}` | 32px | 700 | 1.2 | -1px | Card titles, pricing tier prices |
@@ -362,7 +362,7 @@ The single-family approach is deliberate: Inter at weight 700 + 600 + 400 covers
 | `{typography.nav-link}` | 14px | 500 | 1.4 | 0 | Top-nav menu items |
 
 ### Principles
-Display weights stay at 700 across all sizes. Negative letter-spacing (-1 to -2.5px) is essential — Inter at weight 700 without negative tracking reads as too wide / Apple-marketing. The tightened tracking gives ClickHouse the precise, engineered feel.
+Display weights stay at 700 across all sizes. Negative letter-spacing (-1 to -2.5px) keeps Inter compact and gives SendPlug a precise, forward-moving feel.
 
 Body and labels stay at weights 400 / 500 / 600. The hierarchy is built on size + weight, not on family contrast.
 
@@ -384,7 +384,7 @@ Inter is open-source and the documented choice. **Söhne** is a close commercial
 - **Pricing grid:** 3-4 up at desktop, 1-up at mobile.
 
 ### Whitespace Philosophy
-ClickHouse uses dense, slightly-compressed whitespace appropriate for a developer-tooling brand — generous enough to read editorially, tight enough to feel "engineering-grade" rather than "marketing-soft." Section rhythm at 96px is standard; card internal padding stays at 32px for feature cards.
+SendPlug uses dense, slightly-compressed whitespace appropriate for founder-focused developer infrastructure — generous enough to read editorially, tight enough to feel fast rather than enterprise-heavy. Section rhythm at 96px is standard; card internal padding stays at 32px for feature cards.
 
 ## Elevation & Depth
 
@@ -418,7 +418,7 @@ The system uses no drop shadows. Depth comes from the contrast between black can
 
 ### Top Navigation
 
-**`top-nav`** — Black nav bar pinned to top. 64px tall, `{colors.canvas}` background. Carries the ClickHouse logo + wordmark at left, primary horizontal menu (Product, Use Cases, Pricing, Resources, Customers) center-left, right-side cluster with "Sign in" + "Get Started" `{component.button-primary}` (yellow). Menu items in `{typography.nav-link}` (Inter 14px / 500).
+**`top-nav`** — Black nav bar pinned to top. 64px tall, `{colors.canvas}` background. Carries the SendPlug modular-mail mark + wordmark at left, primary navigation center-left, and "Sign in" + "Start sending" `{component.button-primary}` at right. Menu items use `{typography.nav-link}` (Inter 14px / 500).
 
 ### Buttons
 
@@ -442,9 +442,9 @@ The system uses no drop shadows. Depth comes from the contrast between black can
 
 **`feature-card-dark`** — Standard dark feature card. Background `{colors.surface-card}`, text `{colors.on-dark}`, rounded `{rounded.lg}`, padding `{spacing.xl}` (32px).
 
-**`code-window-card`** — Dark card showing a SQL code block. Background `{colors.surface-card}`, code in JetBrains Mono with syntax highlighting, rounded `{rounded.lg}`, padding `{spacing.lg}` (24px). Often the hero's right-side artifact on developer-focused pages.
+**`code-window-card`** — Dark card showing an API or SDK example. Background `{colors.surface-card}`, code in JetBrains Mono with syntax highlighting, rounded `{rounded.lg}`, padding `{spacing.lg}` (24px). Often the hero's right-side artifact.
 
-**`product-mockup-card`** — Card showing actual ClickHouse product UI (query editor, dashboard, monitoring panel). Same shape as `{component.feature-card-dark}` but with embedded product chrome inside.
+**`product-mockup-card`** — Card showing actual SendPlug UI: sender connection, delivery dashboard, analytics, or token management. Same shape as `{component.feature-card-dark}` with embedded product chrome.
 
 **`pricing-tier-card`** — Standard tier card. Background `{colors.surface-card}`, rounded `{rounded.lg}`, padding `{spacing.xl}` (32px).
 
@@ -476,7 +476,7 @@ The system uses no drop shadows. Depth comes from the contrast between black can
 
 **`cta-band-yellow`** — A pre-footer "Deploy your way" CTA band. Full yellow fill, black type, rounded `{rounded.lg}`, padding 64px. Carries an h2 in `{typography.display-md}` and a CTA — usually a black-button on the yellow surface.
 
-**`footer`** — Black footer that closes every page. Background `{colors.canvas}`, text `{colors.muted}`. 4-column link list at desktop covering Product / Use Cases / Resources / Company. Vertical padding 64px. The ClickHouse wordmark sits at the top in `{colors.on-dark}`.
+**`footer`** — Black footer that closes every page. Background `{colors.canvas}`, text `{colors.muted}`. Four-column link list at desktop covering Product / Developers / Resources / Company. Vertical padding 64px. The SendPlug wordmark sits at the top in `{colors.on-dark}`.
 
 ## Do's and Don'ts
 
@@ -484,17 +484,17 @@ The system uses no drop shadows. Depth comes from the contrast between black can
 - Anchor every page on the black canvas. The yellow + black pairing is the brand voltage.
 - Reserve `{colors.primary}` (yellow) for primary CTAs, stat-callout numbers, and full-bleed yellow CTA bands. The yellow's scarcity at the element level + abundance at the band level is what makes it powerful.
 - Use Inter at weight 700 for every display headline, with -1 to -2.5px letter-spacing.
-- Show actual SQL code blocks inside `{component.code-window-card}` — ClickHouse is a database; show the query, don't paint marketing illustrations of queries.
+- Show actual API calls, npm examples, and delivery UI inside `{component.code-window-card}` — show the product instead of abstract infrastructure illustrations.
 - Use `{component.stat-callout}` numbers to establish credibility (community size, contributors, performance benchmarks). The yellow stat numbers are signature.
 - Anchor every band with `{spacing.section}` (96px) vertical rhythm.
 
 ### Don't
-- Don't introduce a second brand color. ClickHouse is monochromatic + yellow.
+- Don't introduce a second brand color. SendPlug is near-black, soft white, and electric yellow.
 - Don't bold display weight beyond 700 or use weight 500 for headlines. The hierarchy depends on size, not on weight gradation.
 - Don't use yellow for body text or large surface fills outside of intentional yellow cards.
 - Don't use rounded buttons / pills outside of small badges. The standard button radius is 8px (md).
 - Don't repeat the same surface mode in two consecutive bands. Black canvas → dark feature card → yellow CTA card → black canvas → code-window card.
-- Don't replace SQL code mockups with abstract illustrations. The code IS the marketing voltage.
+- Don't replace real SDK and dashboard mockups with abstract illustrations. The working product is the marketing proof.
 - Don't add hover state styling beyond what the system already encodes.
 
 ## Responsive Behavior
@@ -536,9 +536,9 @@ The system uses no drop shadows. Depth comes from the contrast between black can
 
 ## Known Gaps
 
-- The exact yellow hex (#faff69) was sampled from the screenshot; ClickHouse may publish an official brand color slightly differently.
+- Electric yellow `#faff69` is the selected SendPlug primary and must remain consistent across product and marketing surfaces.
 - Inter weight axis values beyond 400 / 500 / 600 / 700 are not formalized — only the static weights observed are documented.
 - Animation and transition timings (code typewriter effects, stat counter animations) are not in scope.
 - Form validation states beyond `{component.text-input-focused}` are not extracted.
-- The actual ClickHouse Cloud product surface (query console, monitoring dashboards, table browser) shares some tokens with the marketing site but adds many product-specific components that are out of scope.
+- The SendPlug application surface shares these tokens with the marketing site and extends them with sender, token, delivery, analytics, and campaign components.
 - The customer logo strip's exact opacity / treatment varies — the muted gray is approximate.

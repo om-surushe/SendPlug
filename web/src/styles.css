@@ -38,8 +38,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 
 .login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .login-card { width: min(420px, 100%); padding: 34px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
-.brand-mark, .logo > span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; background: var(--yellow); color: #0a0a0a; }
-.brand-mark svg { width: 23px; height: 23px; }
+.brand-mark, .logo > span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; overflow: hidden; }
+.brand-mark img { display: block; width: 100%; height: 100%; }
 .login-card .brand-mark { margin-bottom: 32px; }
 .login-card h1 { font-size: 30px; }
 .stack-lg { display: grid; gap: 16px; margin-top: 26px; }

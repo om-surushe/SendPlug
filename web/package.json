@@ -1,5 +1,5 @@
 {
-  "name": "smtp-console-web",
+  "name": "sendplug-web",
   "private": true,
   "version": "2.0.0",
   "type": "module",

@@ -1,8 +1,12 @@
-# SMTP Console
+<p align="center"><img src="brand/final/sendplug-app-icon.svg" width="96" alt="SendPlug" /></p>
+<h1 align="center">SendPlug</h1>
+<p align="center"><strong>Plug in. Send. See.</strong></p>
 
-A self-hosted Gmail relay with a polished React admin, encrypted sender credentials, revocable API tokens, consent-based campaigns, Redis/Celery delivery, and optional local SMTP intake.
+Plug-and-play email infrastructure for founders building SaaS, AI products, automations, and MVPs. Connect a Google sender, create a scoped API token, send application email, and manage delivery from one dashboard.
 
-![CI](https://github.com/om-surushe/SMTP-Server/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/FastAPI-Python-009688) ![React](https://img.shields.io/badge/React-TypeScript-61dafb)
+The current release is self-hostable and includes encrypted sender credentials, revocable API tokens, consent-based campaigns, Redis/Celery delivery, analytics-ready delivery history, and optional local SMTP intake.
+
+![CI](https://github.com/om-surushe/SendPlug/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/FastAPI-Python-009688) ![React](https://img.shields.io/badge/React-TypeScript-61dafb)
 
 ## What it does
 
@@ -52,7 +56,7 @@ Open `http://localhost:8000`, sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`, and
 Create a token in **API Tokens**, select its Gmail sender, and choose `send` and/or `status` permissions. It is shown once. A token cannot send from or read delivery records belonging to another sender.
 
 ```bash
-curl -X POST https://smtp.example.com/api/v1/send \
+curl -X POST https://sendplug.example/api/v1/send \
   -H 'Authorization: Bearer smtp_xxxxxxxx_xxx' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -66,7 +70,7 @@ curl -X POST https://smtp.example.com/api/v1/send \
 Poll status:
 
 ```bash
-curl https://smtp.example.com/api/v1/emails/MESSAGE_ID \
+curl https://sendplug.example/api/v1/emails/MESSAGE_ID \
   -H 'Authorization: Bearer smtp_xxxxxxxx_xxx'
 ```
 
@@ -119,11 +123,7 @@ npm run typecheck
 npm run build
 ```
 
-The UI follows the active ClickHouse-inspired `DESIGN.md`, installed with:
-
-```bash
-npx getdesign@latest add clickhouse
-```
+The UI follows the SendPlug design system in [`DESIGN.md`](DESIGN.md): near-black surfaces, electric yellow brand voltage, direct product copy, and the modular-mail identity under [`brand/final/`](brand/final/).
 
 ## Security
 
@@ -143,7 +143,7 @@ npx getdesign@latest add clickhouse
 
 ## Roadmap
 
-Deferred product work—including a curated public API guide, private internal schema, favicon and final branding, managed Google sign-in, service status, credits, and Dodo Payments—is tracked in [`ROADMAP.md`](ROADMAP.md).
+Deferred product work—including a curated public API guide, private internal schema, customer accounts, managed Google sign-in, service status, and payments—is tracked in [`ROADMAP.md`](ROADMAP.md).
 
 ## License
 

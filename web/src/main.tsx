@@ -41,7 +41,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 function BrandMark({ className = "" }: { className?: string }) {
   return <span className={`brand-mark ${className}`} aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none"><path d="M4 7.5 12 13l8-5.5M5 18h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="m15.5 12.5 3 3m0-3v3h-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+    <img src="/sendplug-app-icon.svg" alt="" />
   </span>;
 }
 
@@ -72,9 +72,9 @@ function Login() {
   return <main className="login-shell">
     <section className="login-card" aria-labelledby="login-title">
       <BrandMark />
-      <p className="eyebrow">PRIVATE MAIL OPERATIONS</p>
-      <h1 id="login-title">SMTP Console</h1>
-      <p className="muted">Manage Gmail senders, API tokens, and consent-based campaigns.</p>
+      <p className="eyebrow">PLUG-AND-PLAY EMAIL</p>
+      <h1 id="login-title">SendPlug</h1>
+      <p className="muted">Connect Google, create an API token, and manage every delivery.</p>
       <form onSubmit={submit} className="stack-lg">
         <label>Email<input name="email" type="email" autoComplete="username" required autoFocus /></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
@@ -95,17 +95,17 @@ function Layout() {
   const [notice, setNotice] = useState("");
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="logo"><BrandMark /><strong>SMTP Console</strong></div>
+      <div className="logo"><BrandMark /><strong>SendPlug</strong></div>
       <nav>{nav.map(([id, icon, label]) =>
         <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}>
           <span>{icon}</span>{label}
         </button>)}
         <a href="/docs" target="_blank" rel="noreferrer"><span>?</span>Developer Docs</a>
       </nav>
-      <div className="sidebar-foot"><span className="status-dot" /> Gmail relay online</div>
+      <div className="sidebar-foot"><span className="status-dot" /> SendPlug delivery online</div>
     </aside>
     <main className="content">
-      <header><div><p className="eyebrow">MAIL OPERATIONS</p><h1>{nav.find(n => n[0] === view)?.[2]}</h1></div>
+      <header><div><p className="eyebrow">EMAIL CONTROL CENTER</p><h1>{nav.find(n => n[0] === view)?.[2]}</h1></div>
         <button className="ghost" onClick={() => { localStorage.removeItem("smtp_admin_token"); location.reload(); }}>Sign out</button>
       </header>
       {notice && <div className="alert success" onClick={() => setNotice("")}>{notice}</div>}

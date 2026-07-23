@@ -13,7 +13,7 @@ def main():
         'smtp_port': 8025,
         'sender': 'sender@example.com',
         'recipients': ['recipient@example.com'],
-        'subject': 'Test Email from SMTP Server',
+        'subject': 'Test Email from SendPlug',
         'body': 'This is a test email sent to verify the SMTP server is working.',
         'html_body': '''
         <h1>Test Email</h1>

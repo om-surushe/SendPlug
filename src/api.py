@@ -75,8 +75,8 @@ class CampaignCreate(BaseModel):
 
 
 app = FastAPI(
-    title="SMTP Console API",
-    description="Self-hosted Gmail relay, API tokens, and consent-based campaigns",
+    title="SendPlug API",
+    description="Plug-and-play email delivery, dashboards, and analytics powered by connected Google senders",
     version="2.0.0",
     docs_url="/docs",
     redoc_url=None,
@@ -239,7 +239,7 @@ def _queue_email(payload: EmailRequest, identity: dict[str, Any]) -> dict[str, A
         sender = storage.get_sender(requested_sender)
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    message_id = f"{uuid.uuid4().hex}@smtp-console"
+    message_id = f"{uuid.uuid4().hex}@sendplug"
     recipients = [str(item) for item in payload.to]
     status_store.create_status(message_id, recipients, payload.subject, sender["id"])
     send_email_task.delay(

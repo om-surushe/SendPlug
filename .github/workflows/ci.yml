@@ -38,4 +38,4 @@ jobs:
         working-directory: web
 
       - name: Build production image
-        run: docker build -t smtp-console:${{ github.sha }} .
+        run: docker build -t sendplug:${{ github.sha }} .

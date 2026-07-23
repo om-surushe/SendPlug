@@ -42,6 +42,8 @@ secrets/
 
 # Local development
 .DS_Store
+.pi/
+.pi-subagents/
 
 # Logs
 *.log
