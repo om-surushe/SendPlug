@@ -1,0 +1,19 @@
+{
+  "name": "sendplug",
+  "private": true,
+  "packageManager": "bun@1.3.5",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "bun --filter @sendplug/api dev",
+    "build": "bun run --filter '*' build",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun test apps/api/test/app.test.ts packages/contracts/test/email-job.test.ts",
+    "test:integration": "bun --filter @sendplug/database test:integration",
+    "db:generate": "bun --filter @sendplug/database db:generate",
+    "db:migrate": "bun --filter @sendplug/database db:migrate",
+    "db:validate": "bun --filter @sendplug/database db:validate"
+  }
+}

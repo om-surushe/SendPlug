@@ -61,9 +61,14 @@ secrets/
 .coverage
 htmlcov/
 
-# Frontend and local data
+# JavaScript workspaces and local data
+node_modules/
 web/node_modules/
 web/dist/
+apps/*/dist/
+packages/*/dist/
+packages/database/src/generated/
+revamp.env
 *.tsbuildinfo
 *.sqlite3
 

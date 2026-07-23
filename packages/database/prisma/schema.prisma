@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  OWNER  @map("owner")
+  MEMBER @map("member")
+}
+
+enum ConnectionStatus {
+  ACTIVE       @map("active")
+  REAUTH_NEEDED @map("reauth_needed")
+  REVOKED      @map("revoked")
+}
+
+enum CampaignStatus {
+  DRAFT     @map("draft")
+  QUEUED    @map("queued")
+  SENDING   @map("sending")
+  COMPLETED @map("completed")
+}
+
+enum RecipientStatus {
+  PENDING @map("pending")
+  QUEUED  @map("queued")
+  SENT    @map("sent")
+  FAILED  @map("failed")
+}
+
+enum DeliveryStatus {
+  QUEUED  @map("queued")
+  SENDING @map("sending")
+  SENT    @map("sent")
+  FAILED  @map("failed")
+}
+
+model Account {
+  id               String            @id
+  name             String
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  memberships      Membership[]
+  gmailConnections GmailConnection[]
+  senders          Sender[]
+  suppressions     Suppression[]
+  deliveries       Delivery[]
+
+  @@map("accounts")
+}
+
+model User {
+  id              String       @id
+  workosUserId    String?      @unique @map("workos_user_id")
+  provider        String
+  providerSubject String       @map("provider_subject")
+  email           String
+  name            String
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastLoginAt     DateTime     @map("last_login_at") @db.Timestamptz(6)
+  memberships     Membership[]
+
+  @@unique([provider, providerSubject])
+  @@index([email])
+  @@map("users")
+}
+
+model Membership {
+  accountId String         @map("account_id")
+  userId    String         @map("user_id")
+  role      MembershipRole
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  account   Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model GmailConnection {
+  id                    String           @id
+  accountId             String           @map("account_id")
+  workosConnectionId    String?          @map("workos_connection_id")
+  googleSubject         String           @map("google_subject")
+  email                 String           @unique
+  encryptedRefreshToken Bytes            @map("encrypted_refresh_token")
+  scopes                String[]
+  status                ConnectionStatus @default(ACTIVE)
+  tokenExpiresAt        DateTime?        @map("token_expires_at") @db.Timestamptz(6)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  account               Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  sender                Sender?
+
+  @@unique([accountId, googleSubject])
+  @@unique([id, accountId])
+  @@index([accountId, status])
+  @@map("gmail_connections")
+}
+
+model Sender {
+  id                    String            @id
+  accountId             String            @map("account_id")
+  gmailConnectionId     String?           @unique @map("gmail_connection_id")
+  name                  String
+  email                 String            @unique
+  legacyEncryptedSecret String?           @map("encrypted_password")
+  smtpHost              String            @default("smtp.gmail.com") @map("smtp_host")
+  smtpPort              Int               @default(587) @map("smtp_port")
+  useTls                Boolean            @default(true) @map("use_tls")
+  dailyLimit            Int                @default(400) @map("daily_limit")
+  active                Boolean            @default(true)
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  account               Account            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  gmailConnection       GmailConnection?   @relation(fields: [gmailConnectionId, accountId], references: [id, accountId], onDelete: Restrict)
+  apiTokens             ApiToken[]
+  quotaReservations     QuotaReservation[]
+  campaigns             Campaign[]
+  deliveries            Delivery[]
+
+  @@unique([id, accountId])
+  @@unique([gmailConnectionId, accountId])
+  @@index([accountId, active])
+  @@map("senders")
+}
+
+model ApiToken {
+  id         String    @id
+  name       String
+  prefix     String    @unique
+  tokenHash  String    @map("token_hash")
+  scopes     String[]
+  senderId   String?   @map("sender_id")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  sender     Sender?   @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@index([senderId, revokedAt])
+  @@map("api_tokens")
+}
+
+model QuotaReservation {
+  messageId      String   @id @map("message_id")
+  senderId       String   @map("sender_id")
+  recipientCount Int      @map("recipient_count")
+  quotaDate      DateTime @map("quota_date") @db.Date
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  sender         Sender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, quotaDate])
+  @@map("quota_reservations")
+}
+
+model Campaign {
+  id          String         @id
+  name        String
+  senderId    String         @map("sender_id")
+  subject     String
+  body        String
+  html        String?
+  status      CampaignStatus @default(DRAFT)
+  total       Int            @default(0)
+  sent        Int            @default(0)
+  failed      Int            @default(0)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt   DateTime?      @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime?      @map("completed_at") @db.Timestamptz(6)
+  sender      Sender         @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  recipients  CampaignRecipient[]
+
+  @@index([senderId, createdAt])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id         String          @id
+  campaignId String          @map("campaign_id")
+  email      String
+  status     RecipientStatus @default(PENDING)
+  messageId  String?         @unique @map("message_id")
+  error      String?
+  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  campaign   Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, email])
+  @@index([campaignId, status])
+  @@map("campaign_recipients")
+}
+
+model Suppression {
+  accountId String   @map("account_id")
+  email     String
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, email])
+  @@index([accountId, createdAt])
+  @@map("account_suppressions")
+}
+
+model Delivery {
+  messageId String         @id @map("message_id")
+  accountId String         @map("account_id")
+  senderId  String         @map("sender_id")
+  recipients String[]
+  subject    String
+  status     DeliveryStatus @default(QUEUED)
+  error      String?
+  details    Json?
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  account    Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  sender     Sender        @relation(fields: [senderId, accountId], references: [id, accountId], onDelete: Restrict)
+
+  @@index([accountId, createdAt])
+  @@index([senderId, status])
+  @@map("deliveries")
+}

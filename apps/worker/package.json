@@ -1,0 +1,20 @@
+{
+  "name": "@sendplug/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "typecheck": "bunx tsc -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@sendplug/contracts": "workspace:*",
+    "@sendplug/database": "workspace:*",
+    "bullmq": "5.81.0",
+    "ioredis": "5.11.1"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "7.0.2"
+  }
+}

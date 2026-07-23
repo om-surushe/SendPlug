@@ -8,8 +8,12 @@ __pycache__
 *.pyc
 .pytest_cache
 .coverage
+node_modules
 web/node_modules
 web/dist
+apps/*/dist
+packages/*/dist
+packages/database/src/generated
 data
 *.sqlite3
 *.log
