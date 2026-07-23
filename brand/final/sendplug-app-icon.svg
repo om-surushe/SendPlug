@@ -3,9 +3,9 @@
   <desc id="desc">The SendPlug modular mail mark on a near-black app tile.</desc>
   <rect width="512" height="512" rx="112" fill="#090909"/>
   <g transform="translate(54 54) scale(.79)">
-    <path fill="#F7F7F7" d="M76 80h164v80h48v80h-48v32h-48v80h48v80H76c-24 0-44-20-44-44V124c0-24 20-44 44-44Z"/>
+    <path fill="#FAFF69" d="M76 80h164v80h48v80h-48v32h-48v80h48v80H76c-24 0-44-20-44-44V124c0-24 20-44 44-44Z"/>
     <path fill="#FAFF69" d="M240 80h196c24 0 44 20 44 44v264c0 24-20 44-44 44H240v-80h-48v-80h48v-32h48v-80h-48V80Z"/>
     <path fill="#090909" d="M126 180h180l88 76-88 76H126c-13 0-24-11-24-24V204c0-13 11-24 24-24Z"/>
-    <path d="m130 207 124 83 91-80M130 305l72-54" fill="none" stroke="#F7F7F7" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="m130 207 124 83 91-80M130 305l72-54" fill="none" stroke="#FAFF69" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>
