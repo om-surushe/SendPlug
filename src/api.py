@@ -418,6 +418,12 @@ static_dir = Path(__file__).resolve().parent.parent / "static"
 if static_dir.exists():
     app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    @app.get("/sendplug-favicon.svg", include_in_schema=False)
+    @app.get("/sendplug-app-icon.svg", include_in_schema=False)
+    def frontend_brand_asset(request: Request):
+        return FileResponse(static_dir / Path(request.url.path).name)
+
     @app.get("/", include_in_schema=False)
     def frontend_index():
         return FileResponse(static_dir / "index.html")
