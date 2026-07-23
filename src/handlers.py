@@ -21,7 +21,7 @@ class EmailHandler:
         rcpt_tos: Optional[list[str]] = None,
     ) -> Dict[str, Any]:
         from .status_store import create_status
-        from .storage import get_sender
+        from .storage import LEGACY_ACCOUNT_ID, get_sender
         from .tasks import send_email_task
 
         msg = BytesParser(policy=policy.default).parsebytes(message)
@@ -30,9 +30,9 @@ class EmailHandler:
         cc_list = self._parse_addresses(msg.get("Cc", ""))
         bcc_list = self._parse_addresses(msg.get("Bcc", ""))
         text_content, html_content = self._get_message_content(msg)
-        sender = get_sender()
+        sender = get_sender(account_id=LEGACY_ACCOUNT_ID)
         message_id = f"{uuid.uuid4().hex}@smtp-intake"
-        create_status(message_id, to_list, subject)
+        create_status(message_id, to_list, subject, sender["id"], LEGACY_ACCOUNT_ID)
         send_email_task.delay(
             message_id,
             {

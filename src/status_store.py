@@ -30,13 +30,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def create_status(message_id: str, to: list, subject: str, sender_id: Optional[str] = None) -> dict:
+def create_status(
+    message_id: str,
+    to: list,
+    subject: str,
+    sender_id: Optional[str] = None,
+    account_id: Optional[str] = None,
+) -> dict:
     data = {
         "status": "queued",
         "message_id": message_id,
         "to": to,
         "subject": subject,
         "sender_id": sender_id,
+        "account_id": account_id,
         "created_at": _now(),
         "updated_at": _now(),
         "error": None,

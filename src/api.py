@@ -1,4 +1,5 @@
 import hmac
+import ipaddress
 import logging
 from html import escape
 import smtplib
@@ -17,6 +18,7 @@ from pydantic import BaseModel, EmailStr, Field
 from . import status_store, storage
 from .auth import create_access_token, get_admin_user, require_scope
 from .config import Config
+from .oauth import exchange_login_code, finish_google_login, google_auth_enabled, start_google_login
 from .tasks import send_email_task
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,10 @@ logger = logging.getLogger(__name__)
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class LoginCodeRequest(BaseModel):
+    code: str = Field(min_length=20, max_length=200)
 
 
 class EmailRequest(BaseModel):
@@ -102,10 +108,40 @@ def health_check():
     return {"status": "healthy", "version": "2.0.0", "redis": "ok"}
 
 
+def _client_ip(request: Request) -> str:
+    peer = request.client.host if request.client else "unknown"
+    try:
+        trusted_proxy = ipaddress.ip_address(peer).is_private or ipaddress.ip_address(peer).is_loopback
+        forwarded = request.headers.get("x-real-ip", "").strip()
+        return str(ipaddress.ip_address(forwarded)) if trusted_proxy and forwarded else peer
+    except ValueError:
+        return peer
+
+
+@app.get("/auth/config")
+def auth_config():
+    return {"google": google_auth_enabled(), "signups": Config.AUTH_SIGNUPS_ENABLED}
+
+
+@app.get("/auth/google/login", include_in_schema=False)
+def google_login(request: Request):
+    return start_google_login(request)
+
+
+@app.get("/auth/google/callback", include_in_schema=False)
+def google_callback(request: Request):
+    return finish_google_login(request)
+
+
+@app.post("/auth/exchange")
+def exchange(payload: LoginCodeRequest):
+    return {"token": exchange_login_code(payload.code)}
+
+
 @app.post("/auth/login")
 def login(payload: LoginRequest, request: Request):
     redis = status_store.get_redis()
-    rate_key = f"login:{request.client.host if request.client else 'unknown'}"
+    rate_key = f"login:{_client_ip(request)}"
     attempts = redis.incr(rate_key)
     if attempts == 1:
         redis.expire(rate_key, 300)
@@ -117,31 +153,52 @@ def login(payload: LoginRequest, request: Request):
     if not valid:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     redis.delete(rate_key)
+    identity = storage.legacy_identity()
     token = create_access_token(
-        {"sub": Config.ADMIN_EMAIL, "email": Config.ADMIN_EMAIL, "purpose": "smtp_admin_session"},
+        {
+            "sub": identity["email"],
+            "email": identity["email"],
+            "purpose": "account_session",
+            "user_id": identity["user_id"],
+            "account_id": identity["account_id"],
+            "account_name": identity["account_name"],
+            "role": identity["role"],
+        },
         timedelta(minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     return {
         "token": token,
-        "email": Config.ADMIN_EMAIL,
+        "email": identity["email"],
         "expires_in_minutes": Config.ACCESS_TOKEN_EXPIRE_MINUTES,
     }
 
 
+@app.get("/auth/me")
+def current_account(identity: dict = Depends(get_admin_user)):
+    return {
+        "email": identity.get("email") or identity["sub"],
+        "account_id": identity["account_id"],
+        "account_name": identity.get("account_name", "SendPlug account"),
+        "role": identity.get("role", "owner"),
+        "recovery": identity["account_id"] == storage.LEGACY_ACCOUNT_ID,
+    }
+
+
 @app.get("/api/v1/dashboard")
-def dashboard(_: str = Depends(get_admin_user)):
-    return storage.dashboard()
+def dashboard(identity: dict = Depends(get_admin_user)):
+    return storage.dashboard(identity["account_id"])
 
 
 @app.get("/api/v1/senders")
-def senders(_: str = Depends(get_admin_user)):
-    return storage.list_senders()
+def senders(identity: dict = Depends(get_admin_user)):
+    return storage.list_senders(identity["account_id"])
 
 
 @app.post("/api/v1/senders", status_code=201)
-def add_sender(payload: SenderCreate, _: str = Depends(get_admin_user)):
+def add_sender(payload: SenderCreate, identity: dict = Depends(get_admin_user)):
     try:
         return storage.create_sender(
+            identity["account_id"],
             payload.name,
             str(payload.email),
             payload.app_password.replace(" ", ""),
@@ -157,9 +214,10 @@ def add_sender(payload: SenderCreate, _: str = Depends(get_admin_user)):
 
 
 @app.put("/api/v1/senders/{sender_id}")
-def edit_sender(sender_id: str, payload: SenderUpdate, _: str = Depends(get_admin_user)):
+def edit_sender(sender_id: str, payload: SenderUpdate, identity: dict = Depends(get_admin_user)):
     try:
         return storage.update_sender(
+            identity["account_id"],
             sender_id,
             payload.name,
             str(payload.email),
@@ -176,9 +234,9 @@ def edit_sender(sender_id: str, payload: SenderUpdate, _: str = Depends(get_admi
 
 
 @app.post("/api/v1/senders/{sender_id}/test")
-def test_sender(sender_id: str, _: str = Depends(get_admin_user)):
+def test_sender(sender_id: str, identity: dict = Depends(get_admin_user)):
     try:
-        sender = storage.get_sender(sender_id)
+        sender = storage.get_sender(sender_id, identity["account_id"])
         context = ssl.create_default_context()
         with smtplib.SMTP(sender["smtp_host"], sender["smtp_port"], timeout=20) as client:
             if sender["use_tls"]:
@@ -193,39 +251,43 @@ def test_sender(sender_id: str, _: str = Depends(get_admin_user)):
 
 
 @app.delete("/api/v1/senders/{sender_id}", status_code=204)
-def remove_sender(sender_id: str, _: str = Depends(get_admin_user)):
+def remove_sender(sender_id: str, identity: dict = Depends(get_admin_user)):
     try:
-        storage.delete_sender(sender_id)
+        storage.delete_sender(identity["account_id"], sender_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.get("/api/v1/tokens")
-def tokens(_: str = Depends(get_admin_user)):
-    return storage.list_api_tokens()
+def tokens(identity: dict = Depends(get_admin_user)):
+    return storage.list_api_tokens(identity["account_id"])
 
 
 @app.post("/api/v1/tokens", status_code=201)
-def add_token(payload: TokenCreate, _: str = Depends(get_admin_user)):
+def add_token(payload: TokenCreate, identity: dict = Depends(get_admin_user)):
     try:
-        record, raw = storage.create_api_token(payload.name, payload.scopes, payload.sender_id)
+        record, raw = storage.create_api_token(
+            identity["account_id"], payload.name, payload.scopes, payload.sender_id
+        )
         return record | {"token": raw}
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.put("/api/v1/tokens/{token_id}")
-def edit_token(token_id: str, payload: TokenUpdate, _: str = Depends(get_admin_user)):
+def edit_token(token_id: str, payload: TokenUpdate, identity: dict = Depends(get_admin_user)):
     try:
-        return storage.update_api_token(token_id, payload.name, payload.scopes, payload.sender_id)
+        return storage.update_api_token(
+            identity["account_id"], token_id, payload.name, payload.scopes, payload.sender_id
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.delete("/api/v1/tokens/{token_id}", status_code=204)
-def revoke_token(token_id: str, _: str = Depends(get_admin_user)):
+def revoke_token(token_id: str, identity: dict = Depends(get_admin_user)):
     try:
-        storage.revoke_api_token(token_id)
+        storage.revoke_api_token(identity["account_id"], token_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -238,12 +300,17 @@ def _queue_email(payload: EmailRequest, identity: dict[str, Any]) -> dict[str, A
             raise HTTPException(status_code=403, detail="API token is restricted to another sender")
         requested_sender = token_sender
     try:
-        sender = storage.get_sender(requested_sender)
+        sender = storage.get_sender(
+            requested_sender,
+            None if identity.get("purpose") == "api_token" else identity["account_id"],
+        )
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     message_id = f"{uuid.uuid4().hex}@sendplug"
     recipients = [str(item) for item in payload.to]
-    status_store.create_status(message_id, recipients, payload.subject, sender["id"])
+    status_store.create_status(
+        message_id, recipients, payload.subject, sender["id"], identity["account_id"]
+    )
     send_email_task.delay(
         message_id,
         {
@@ -273,21 +340,29 @@ def get_email_status(message_id: str, identity: dict = Depends(require_scope("st
     result = status_store.get_status(message_id)
     if not result:
         raise HTTPException(status_code=404, detail="Email not found")
-    if identity.get("purpose") == "api_token" and result.get("sender_id") != identity.get("sender_id"):
+    if identity.get("purpose") == "api_token":
+        allowed = result.get("sender_id") == identity.get("sender_id")
+    else:
+        record_account = result.get("account_id")
+        allowed = record_account == identity.get("account_id") or (
+            record_account is None and identity.get("account_id") == storage.LEGACY_ACCOUNT_ID
+        )
+    if not allowed:
         raise HTTPException(status_code=404, detail="Email not found")
-    return result
+    return {key: value for key, value in result.items() if key != "account_id"}
 
 
 @app.get("/api/v1/suppressions")
-def suppressions(_: str = Depends(get_admin_user)):
-    return storage.list_suppressions()
+def suppressions(identity: dict = Depends(get_admin_user)):
+    return storage.list_suppressions(identity["account_id"])
 
 
 @app.get("/unsubscribe/{token}", response_class=HTMLResponse, include_in_schema=False)
 def unsubscribe_page(token: str):
-    email = storage.email_from_unsubscribe_token(token)
-    if not email:
+    unsubscribe_identity = storage.identity_from_unsubscribe_token(token)
+    if not unsubscribe_identity:
         raise HTTPException(status_code=400, detail="Invalid unsubscribe link")
+    _, email = unsubscribe_identity
     return HTMLResponse(
         "<!doctype html><meta name='viewport' content='width=device-width'>"
         "<body style='font:16px system-ui;max-width:520px;margin:80px auto;padding:20px'>"
@@ -298,10 +373,11 @@ def unsubscribe_page(token: str):
 
 @app.post("/unsubscribe/{token}", response_class=HTMLResponse, include_in_schema=False)
 def unsubscribe(token: str):
-    email = storage.email_from_unsubscribe_token(token)
-    if not email:
+    unsubscribe_identity = storage.identity_from_unsubscribe_token(token)
+    if not unsubscribe_identity:
         raise HTTPException(status_code=400, detail="Invalid unsubscribe link")
-    storage.suppress(email)
+    account_id, email = unsubscribe_identity
+    storage.suppress(account_id, email)
     return HTMLResponse(
         "<!doctype html><meta name='viewport' content='width=device-width'>"
         "<body style='font:16px system-ui;max-width:520px;margin:80px auto;padding:20px'>"
@@ -310,14 +386,15 @@ def unsubscribe(token: str):
 
 
 @app.get("/api/v1/campaigns")
-def campaigns(_: str = Depends(get_admin_user)):
-    return storage.list_campaigns()
+def campaigns(identity: dict = Depends(get_admin_user)):
+    return storage.list_campaigns(identity["account_id"])
 
 
 @app.post("/api/v1/campaigns", status_code=201)
-def add_campaign(payload: CampaignCreate, _: str = Depends(get_admin_user)):
+def add_campaign(payload: CampaignCreate, identity: dict = Depends(get_admin_user)):
     try:
         return storage.create_campaign(
+            identity["account_id"],
             payload.name,
             payload.sender_id,
             payload.subject,
@@ -330,9 +407,10 @@ def add_campaign(payload: CampaignCreate, _: str = Depends(get_admin_user)):
 
 
 @app.put("/api/v1/campaigns/{campaign_id}")
-def edit_campaign(campaign_id: str, payload: CampaignCreate, _: str = Depends(get_admin_user)):
+def edit_campaign(campaign_id: str, payload: CampaignCreate, identity: dict = Depends(get_admin_user)):
     try:
         return storage.update_campaign(
+            identity["account_id"],
             campaign_id,
             payload.name,
             payload.sender_id,
@@ -348,9 +426,9 @@ def edit_campaign(campaign_id: str, payload: CampaignCreate, _: str = Depends(ge
 
 
 @app.delete("/api/v1/campaigns/{campaign_id}", status_code=204)
-def remove_campaign(campaign_id: str, _: str = Depends(get_admin_user)):
+def remove_campaign(campaign_id: str, identity: dict = Depends(get_admin_user)):
     try:
-        storage.delete_campaign(campaign_id)
+        storage.delete_campaign(identity["account_id"], campaign_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -358,27 +436,28 @@ def remove_campaign(campaign_id: str, _: str = Depends(get_admin_user)):
 
 
 @app.get("/api/v1/campaigns/{campaign_id}")
-def campaign(campaign_id: str, _: str = Depends(get_admin_user)):
+def campaign(campaign_id: str, identity: dict = Depends(get_admin_user)):
     try:
-        return storage.get_campaign(campaign_id)
+        return storage.get_campaign(identity["account_id"], campaign_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.post("/api/v1/campaigns/{campaign_id}/start", status_code=202)
-def launch_campaign(campaign_id: str, _: str = Depends(get_admin_user)):
+def launch_campaign(campaign_id: str, identity: dict = Depends(get_admin_user)):
+    account_id = identity["account_id"]
     try:
-        campaign_data = storage.get_campaign(campaign_id)
-        queued = storage.start_campaign(campaign_id)
+        campaign_data = storage.get_campaign(account_id, campaign_id)
+        queued = storage.start_campaign(account_id, campaign_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     for item in queued:
-        if storage.is_suppressed(item["email"]):
+        if storage.is_suppressed(account_id, item["email"]):
             storage.complete_campaign_recipient(item["message_id"], "failed", "Recipient suppressed")
             continue
-        token = storage.unsubscribe_token(item["email"])
+        token = storage.unsubscribe_token(account_id, item["email"])
         unsubscribe_url = f"{Config.PUBLIC_URL}/unsubscribe/{token}"
         text = f"{campaign_data['body']}\n\nUnsubscribe: {unsubscribe_url}"
         html = campaign_data["html"]
@@ -388,7 +467,11 @@ def launch_campaign(campaign_id: str, _: str = Depends(get_admin_user)):
                 f"<a href='{unsubscribe_url}'>Unsubscribe</a></p>"
             )
         status_store.create_status(
-            item["message_id"], [item["email"]], campaign_data["subject"], campaign_data["sender_id"]
+            item["message_id"],
+            [item["email"]],
+            campaign_data["subject"],
+            campaign_data["sender_id"],
+            account_id,
         )
         send_email_task.delay(
             item["message_id"],
@@ -408,7 +491,7 @@ def launch_campaign(campaign_id: str, _: str = Depends(get_admin_user)):
 
 
 @app.get("/status")
-def server_status(_: str = Depends(get_admin_user)):
+def server_status(_: dict = Depends(get_admin_user)):
     return {
         "status": "running",
         "smtp": {"host": Config.HOST, "port": Config.PORT, "auth": Config.ENABLE_AUTH},

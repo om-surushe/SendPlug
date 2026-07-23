@@ -3,7 +3,7 @@ import sys
 
 from dotenv import dotenv_values
 
-from .storage import create_sender, init_db, list_senders
+from .storage import LEGACY_ACCOUNT_ID, create_sender, init_db, list_senders
 
 
 def main() -> None:
@@ -15,10 +15,10 @@ def main() -> None:
     if not email or not password:
         raise SystemExit("Legacy SMTP_USERNAME/SMTP_PASSWORD are missing")
     init_db()
-    if any(sender["email"] == email.lower() for sender in list_senders()):
+    if any(sender["email"] == email.lower() for sender in list_senders(LEGACY_ACCOUNT_ID)):
         print(f"Sender already imported: {email}")
         return
-    create_sender("Primary Gmail", email, password)
+    create_sender(LEGACY_ACCOUNT_ID, "Primary Gmail", email, password)
     print(f"Imported encrypted sender: {email}")
 
 

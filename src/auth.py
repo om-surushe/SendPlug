@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 
 from .config import Config
-from .storage import verify_api_token
+from .storage import LEGACY_ACCOUNT_ID, LEGACY_USER_ID, verify_api_token
 
 security = HTTPBearer(auto_error=False)
 
@@ -37,8 +37,15 @@ async def verify_token(
         return payload
     try:
         payload = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=[Config.JWT_ALGORITHM])
-        if payload.get("purpose") != "smtp_admin_session":
+        if payload.get("purpose") not in {"account_session", "smtp_admin_session"}:
             raise HTTPException(status_code=401, detail="Invalid token purpose")
+        # Sessions issued before account ownership was introduced remain recovery-safe.
+        if payload.get("purpose") == "smtp_admin_session":
+            payload.setdefault("account_id", LEGACY_ACCOUNT_ID)
+            payload.setdefault("user_id", LEGACY_USER_ID)
+            payload.setdefault("role", "owner")
+        if not payload.get("account_id"):
+            raise HTTPException(status_code=401, detail="Session has no account")
         return payload
     except jwt.PyJWTError:
         raise HTTPException(
@@ -55,15 +62,16 @@ def get_current_user(payload: dict = Depends(verify_token)) -> str:
     return identity
 
 
-def get_admin_user(payload: dict = Depends(verify_token)) -> str:
-    if payload.get("purpose") != "smtp_admin_session":
-        raise HTTPException(status_code=403, detail="Administrator session required")
-    return get_current_user(payload)
+def get_admin_user(payload: dict = Depends(verify_token)) -> dict:
+    if payload.get("purpose") not in {"account_session", "smtp_admin_session"}:
+        raise HTTPException(status_code=403, detail="Account session required")
+    get_current_user(payload)
+    return payload
 
 
 def require_scope(scope: str):
     def dependency(payload: dict = Depends(verify_token)) -> dict:
-        if payload.get("purpose") != "smtp_admin_session" and scope not in payload.get("scopes", []):
+        if payload.get("purpose") not in {"account_session", "smtp_admin_session"} and scope not in payload.get("scopes", []):
             raise HTTPException(status_code=403, detail=f"Token requires '{scope}' scope")
         get_current_user(payload)
         return payload

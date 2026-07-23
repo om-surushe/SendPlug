@@ -41,6 +41,10 @@ class Config:
     ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
     ADMIN_ORIGIN = os.getenv("ADMIN_ORIGIN", "http://localhost:5173")
     PUBLIC_URL = os.getenv("PUBLIC_URL", ADMIN_ORIGIN).rstrip("/")
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    AUTH_SIGNUPS_ENABLED = os.getenv("AUTH_SIGNUPS_ENABLED", "true").lower() == "true"
 
     JWT_SECRET_KEY = _secret("JWT_SECRET_KEY", "JWT_SECRET_FILE")
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")

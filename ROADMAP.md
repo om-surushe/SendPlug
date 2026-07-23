@@ -20,13 +20,14 @@ This file records deferred product work. Items here are not commitments to a rel
 - Complete trademark review and acquire the chosen domain before the public product launch.
 - Use descriptive page titles and landing copy for searches such as “plug-and-play email API,” “Gmail email API,” and “email API for founders.”
 
-## Customer authentication and accounts ([#3](https://github.com/om-surushe/SendPlug/issues/3))
+## Customer authentication and accounts ([#3](https://github.com/om-surushe/SendPlug/issues/3)) — implementation complete, provider activation pending
 
-- Add managed sign-in, with WorkOS AuthKit as a candidate provider.
-- Support Google sign-in and account recovery.
-- Separate customer accounts, sender ownership, tokens, campaigns, and quotas.
-- Preserve the existing administrator access path for operations and recovery.
-- Add credits and usage accounting only after the account model is stable.
+- Direct Google OpenID Connect was selected over WorkOS for the current indie-founder product and cost profile.
+- Accounts, users, memberships, senders, tokens, campaigns, suppressions, quotas, and delivery status now enforce customer ownership.
+- Existing data migrates to a deterministic recovery-administrator account; the original password login remains operational.
+- Google sign-in uses authorization code + PKCE, state, nonce, verified claims, and a one-time Redis login exchange.
+- Production activation still requires Google OAuth client credentials and the registered callback URI.
+- Credits and usage accounting remain deferred until the account model has operated safely in production.
 
 ## Service status ([#4](https://github.com/om-surushe/SendPlug/issues/4))
 

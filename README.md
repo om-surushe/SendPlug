@@ -74,6 +74,18 @@ curl https://sendplug.example/api/v1/emails/MESSAGE_ID \
   -H "Authorization: Bearer $SENDPLUG_API_TOKEN"
 ```
 
+## Customer accounts and Google sign-in
+
+Senders, API tokens, campaigns, suppressions, quotas, and delivery status are isolated by customer account. Existing installations migrate all current data into the protected recovery-administrator account. A Google sender can belong to only one account at a time to prevent credential and ownership ambiguity.
+
+Google OpenID Connect is optional. Configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and this callback URL to enable **Continue with Google**:
+
+```text
+https://your-sendplug.example/auth/google/callback
+```
+
+The flow uses authorization code + PKCE, state and nonce validation, a short-lived one-time login code, and verified Google email claims. Set `AUTH_SIGNUPS_ENABLED=false` to prevent new customer account creation. The original `ADMIN_EMAIL` and `ADMIN_PASSWORD` login remains available as the operational recovery path.
+
 ## Developer guide
 
 The curated guide at `/docs` documents only the sender-scoped send and delivery-status APIs. Administrative sender, token, suppression, and campaign operations intentionally remain dashboard-only and are not part of the public API contract.

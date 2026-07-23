@@ -19,6 +19,8 @@ type Dashboard = {
   senders: number; tokens: number; campaigns: number; sent: number; failed: number; suppressed: number;
   recent_campaigns: Campaign[];
 };
+type Session = { email: string; account_id: string; account_name: string; role: string; recovery: boolean };
+type AuthConfig = { google: boolean; signups: boolean };
 
 const storedToken = () => localStorage.getItem("smtp_admin_token") || "";
 
@@ -28,7 +30,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = storedToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(path, { ...options, headers });
-  if (response.status === 401) {
+  if (response.status === 401 && token) {
     localStorage.removeItem("smtp_admin_token");
     window.location.reload();
   }
@@ -54,9 +56,11 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   </dialog>;
 }
 
-function Login() {
-  const [error, setError] = useState("");
+function Login({ initialError = "" }: { initialError?: string }) {
+  const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
+  const [authConfig, setAuthConfig] = useState<AuthConfig>();
+  useEffect(() => { api<AuthConfig>("/auth/config").then(setAuthConfig).catch(() => undefined); }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     const form = new FormData(event.currentTarget);
@@ -75,6 +79,10 @@ function Login() {
       <p className="eyebrow">PLUG-AND-PLAY EMAIL</p>
       <h1 id="login-title">SendPlug</h1>
       <p className="muted">Connect Google, create an API token, and manage every delivery.</p>
+      {authConfig?.google && <>
+        <a className="google-button" href="/auth/google/login">Continue with Google</a>
+        <div className="auth-divider"><span>or use recovery access</span></div>
+      </>}
       <form onSubmit={submit} className="stack-lg">
         <label>Email<input name="email" type="email" autoComplete="username" required autoFocus /></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
@@ -93,6 +101,8 @@ const nav = [
 function Layout() {
   const [view, setView] = useState<(typeof nav)[number][0]>("dashboard");
   const [notice, setNotice] = useState("");
+  const [session, setSession] = useState<Session>();
+  useEffect(() => { api<Session>("/auth/me").then(setSession).catch(() => undefined); }, []);
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="logo"><BrandMark /><strong>SendPlug</strong></div>
@@ -102,10 +112,10 @@ function Layout() {
         </button>)}
         <a href="/docs" target="_blank" rel="noreferrer"><span>?</span>Docs</a>
       </nav>
-      <div className="sidebar-foot"><span className="status-dot" /> SendPlug delivery online</div>
+      <div className="sidebar-foot"><strong>{session?.account_name || "SendPlug account"}</strong><span>{session?.email || "Loading account…"}</span></div>
     </aside>
     <main className="content">
-      <header><div><p className="eyebrow">EMAIL CONTROL CENTER</p><h1>{nav.find(n => n[0] === view)?.[2]}</h1></div>
+      <header><div><p className="eyebrow">{session?.account_name || "EMAIL CONTROL CENTER"}</p><h1>{nav.find(n => n[0] === view)?.[2]}</h1></div>
         <button className="ghost" onClick={() => { localStorage.removeItem("smtp_admin_token"); location.reload(); }}>Sign out</button>
       </header>
       {notice && <div className="alert success" onClick={() => setNotice("")}>{notice}</div>}
@@ -240,4 +250,25 @@ function CampaignTable({ campaigns, actions }: { campaigns: Campaign[]; actions?
   return <div className="table-wrap" tabIndex={0} role="region" aria-label="Campaigns table"><table><thead><tr><th>Campaign</th><th>Status</th><th>Recipients</th><th>Sent</th><th>Failed</th><th>Created</th>{actions && <th />}</tr></thead><tbody>{campaigns.map(item => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.subject}</small></td><td><span className={`badge ${item.status}`}>{item.status}</span></td><td>{item.total}</td><td>{item.sent}</td><td>{item.failed}</td><td>{formatDate(item.created_at)}</td>{actions && <td>{actions(item)}</td>}</tr>)}</tbody></table></div>;
 }
 
-createRoot(document.getElementById("root")!).render(<React.StrictMode>{storedToken() ? <Layout /> : <Login />}</React.StrictMode>);
+function App() {
+  const loginCode = new URLSearchParams(location.search).get("login_code");
+  const [oauthState, setOauthState] = useState<"idle" | "loading" | "failed">(loginCode ? "loading" : "idle");
+  useEffect(() => {
+    if (!loginCode) return;
+    api<{ token: string }>("/auth/exchange", { method: "POST", body: JSON.stringify({ code: loginCode }) })
+      .then(result => {
+        localStorage.setItem("smtp_admin_token", result.token);
+        history.replaceState({}, "", location.pathname);
+        location.reload();
+      })
+      .catch(() => {
+        history.replaceState({}, "", location.pathname);
+        setOauthState("failed");
+      });
+  }, [loginCode]);
+  if (oauthState === "loading") return <main className="login-shell"><div className="empty">Completing Google sign-in…</div></main>;
+  if (oauthState === "failed") return <Login initialError="Google sign-in expired. Try again or use recovery access." />;
+  return storedToken() ? <Layout /> : <Login />;
+}
+
+createRoot(document.getElementById("root")!).render(<React.StrictMode><App /></React.StrictMode>);
