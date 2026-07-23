@@ -38,6 +38,7 @@ class Config:
     HTTP_PORT = int(os.getenv("HTTP_PORT", "8000"))
     API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
     ADMIN_ORIGIN = os.getenv("ADMIN_ORIGIN", "http://localhost:5173")
     PUBLIC_URL = os.getenv("PUBLIC_URL", ADMIN_ORIGIN).rstrip("/")
 

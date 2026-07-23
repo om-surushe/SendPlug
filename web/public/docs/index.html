@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#faff69" />
+  <meta name="description" content="SendPlug API guide for sending application email and checking delivery status." />
+  <link rel="icon" type="image/svg+xml" href="/sendplug-favicon.svg?v=3" />
+  <title>SendPlug API Guide</title>
+  <style>
+    :root{color-scheme:dark;--bg:#090909;--panel:#151515;--panel2:#1c1c1c;--line:#2b2b2b;--text:#f7f7f7;--muted:#a0a0a0;--yellow:#faff69;--green:#26d77c;--red:#ff6b6b;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:92px}body{margin:0;background:var(--bg);color:var(--text);line-height:1.65}a{color:inherit}.topbar{position:sticky;z-index:20;top:0;display:flex;align-items:center;justify-content:space-between;height:68px;padding:0 max(20px,calc((100vw - 1280px)/2));border-bottom:1px solid var(--line);background:rgba(9,9,9,.94);backdrop-filter:blur(14px)}.brand{display:flex;align-items:center;gap:11px;text-decoration:none;font-weight:750;letter-spacing:-.03em}.brand img{width:34px;height:34px}.topbar nav{display:flex;align-items:center;gap:20px;color:var(--muted);font-size:14px}.topbar nav a{text-decoration:none}.topbar nav a:hover{color:var(--yellow)}.cta{padding:9px 14px;border-radius:8px;background:var(--yellow);color:#090909!important;font-weight:700}.hero{max-width:1280px;margin:auto;padding:88px 24px 64px;border-bottom:1px solid var(--line)}.eyebrow{margin:0 0 14px;color:var(--yellow);font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.16em}.hero h1{max-width:850px;margin:0;font-size:clamp(48px,8vw,92px);line-height:.96;letter-spacing:-.065em}.hero h1 span{color:var(--yellow)}.hero>p:not(.eyebrow){max-width:670px;margin:28px 0 0;color:#b8b8b8;font-size:20px}.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}.chip{padding:7px 11px;border:1px solid var(--line);border-radius:999px;color:#cfcfcf;font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace}.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:54px;max-width:1280px;margin:auto;padding:54px 24px 100px}.toc{position:sticky;top:96px;align-self:start;display:grid;gap:4px}.toc strong{margin-bottom:8px;color:#777;font-size:11px;letter-spacing:.14em}.toc a{padding:8px 10px;border-radius:7px;color:#969696;text-decoration:none;font-size:14px}.toc a:hover{background:#171717;color:var(--text)}article{min-width:0;max-width:900px}section{padding:12px 0 62px;border-bottom:1px solid var(--line)}section+section{padding-top:62px}h2{margin:0 0 14px;font-size:34px;letter-spacing:-.04em}h3{margin:34px 0 10px;font-size:20px}p{margin:10px 0;color:#c5c5c5}.lead{font-size:18px}.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:26px 0}.step{padding:20px;border:1px solid var(--line);border-radius:13px;background:var(--panel)}.step b{display:block;margin-bottom:8px;color:var(--yellow);font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace}.step strong{display:block;margin-bottom:6px}.step span{color:var(--muted);font-size:14px}.note{margin:22px 0;padding:16px 18px;border-left:3px solid var(--yellow);background:#17170e;color:#d6d6bd}.warning{border-color:var(--red);background:#1d1111;color:#e7c4c4}.code{position:relative;margin:18px 0 26px;overflow:auto;border:1px solid var(--line);border-radius:13px;background:#111}.code .label{display:block;padding:10px 16px;border-bottom:1px solid var(--line);color:#7f7f7f;font:700 11px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em}.code pre{margin:0;padding:18px;min-width:620px;color:#e8e8e8;font:14px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.code .accent{color:var(--yellow)}.code .string{color:#bdeba7}.code .muted{color:#777}.table-wrap{margin:20px 0;overflow-x:auto;border:1px solid var(--line);border-radius:13px}.table-wrap:focus-visible{outline:2px solid var(--yellow)}table{width:100%;min-width:680px;border-collapse:collapse;background:var(--panel);font-size:14px}th,td{padding:14px 16px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}tr:last-child td{border-bottom:0}th{color:#8e8e8e;font-size:12px;font-weight:600}td code{color:var(--yellow);font:13px ui-monospace,SFMono-Regular,Menlo,monospace}.required{color:var(--yellow);font-size:11px}.status-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.status{padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}.status code{display:block;margin-bottom:4px;color:var(--yellow)}.status span{color:var(--muted);font-size:13px}.errors td:first-child{width:90px;color:var(--yellow);font:700 13px ui-monospace,SFMono-Regular,Menlo,monospace}.footer{padding:30px 24px;border-top:1px solid var(--line);color:#737373;text-align:center;font-size:13px}@media(max-width:900px){.layout{grid-template-columns:1fr}.toc{display:none}.steps{grid-template-columns:1fr}.status-grid{grid-template-columns:repeat(2,1fr)}article{max-width:none}}@media(max-width:600px){.topbar{padding:0 16px}.topbar nav a:not(.cta){display:none}.hero{padding:62px 16px 48px}.hero>p:not(.eyebrow){font-size:17px}.layout{padding:34px 16px 80px}section,section+section{padding-block:42px}h2{font-size:28px}.status-grid{grid-template-columns:1fr}.code{margin-inline:-4px}.code pre{font-size:12px}}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="/sendplug-app-icon.svg?v=3" alt="" />SendPlug</a>
+    <nav><a href="#authentication">Authentication</a><a href="#send">Send</a><a href="#status">Status</a><a class="cta" href="/">Open dashboard</a></nav>
+  </header>
+
+  <div class="hero">
+    <p class="eyebrow">SENDPLUG API · V1</p>
+    <h1>Plug email into<br /><span>your product.</span></h1>
+    <p>Use a sender-scoped token to queue application email and read its delivery state. No Gmail password belongs in your application.</p>
+    <div class="chips"><span class="chip">REST + JSON</span><span class="chip">BEARER TOKENS</span><span class="chip">SENDER SCOPED</span><span class="chip">7-DAY STATUS</span></div>
+  </div>
+
+  <main class="layout">
+    <aside class="toc" aria-label="On this page">
+      <strong>ON THIS PAGE</strong>
+      <a href="#quickstart">Quickstart</a><a href="#authentication">Authentication</a><a href="#send">Send email</a><a href="#status">Delivery status</a><a href="#quotas">Quotas and retries</a><a href="#errors">Errors</a><a href="#security">Security</a>
+    </aside>
+    <article>
+      <section id="quickstart">
+        <p class="eyebrow">01 · QUICKSTART</p><h2>First email in three steps</h2>
+        <div class="steps">
+          <div class="step"><b>STEP 1</b><strong>Connect Google</strong><span>Add a Gmail or Google Workspace sender in the SendPlug dashboard.</span></div>
+          <div class="step"><b>STEP 2</b><strong>Create a token</strong><span>Select that sender and grant the <code>send</code> and <code>status</code> scopes.</span></div>
+          <div class="step"><b>STEP 3</b><strong>Call the API</strong><span>Store the token server-side and send the request below.</span></div>
+        </div>
+        <div class="code"><span class="label">SHELL</span><pre><span class="accent">export</span> SENDPLUG_BASE_URL=<span class="string">"https://your-sendplug.example"</span>
+<span class="accent">export</span> SENDPLUG_API_TOKEN=<span class="string">"paste-token-shown-once"</span>
+
+curl -X POST <span class="string">"$SENDPLUG_BASE_URL/api/v1/send"</span> \
+  -H <span class="string">"Authorization: Bearer $SENDPLUG_API_TOKEN"</span> \
+  -H <span class="string">"Content-Type: application/json"</span> \
+  -d <span class="string">'{
+    "to": ["recipient@example.com"],
+    "subject": "Welcome",
+    "body": "Your account is ready.",
+    "html": "&lt;p&gt;Your account is ready.&lt;/p&gt;"
+  }'</span></pre></div>
+      </section>
+
+      <section id="authentication">
+        <p class="eyebrow">02 · AUTHENTICATION</p><h2>One token, one sender</h2>
+        <p class="lead">Every request uses an API token in the HTTP <code>Authorization</code> header.</p>
+        <div class="code"><span class="label">HTTP HEADER</span><pre>Authorization: Bearer $SENDPLUG_API_TOKEN</pre></div>
+        <p>A token is bound to the Google sender selected when it was created. A token cannot send through another sender or read another sender's delivery records.</p>
+        <div class="note">Tokens are shown once and stored by SendPlug only as keyed hashes. Keep them in your server's secret manager or environment—not browser code, mobile applications, repositories, or logs.</div>
+        <h3>Scopes</h3>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Token scopes"><table><thead><tr><th>Scope</th><th>Allows</th></tr></thead><tbody><tr><td><code>send</code></td><td>Queue email through the token's selected sender.</td></tr><tr><td><code>status</code></td><td>Read delivery status for email sent by that sender.</td></tr></tbody></table></div>
+      </section>
+
+      <section id="send">
+        <p class="eyebrow">03 · SEND</p><h2>Queue application email</h2>
+        <p><code>POST /api/v1/send</code> validates the request, selects the sender from the token, creates a status record, and returns immediately with HTTP <code>202 Accepted</code>.</p>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Send request fields"><table><thead><tr><th>Field</th><th>Type</th><th>Rules</th></tr></thead><tbody>
+          <tr><td><code>to</code> <span class="required">REQUIRED</span></td><td>string[]</td><td>Exactly one valid email address.</td></tr>
+          <tr><td><code>subject</code> <span class="required">REQUIRED</span></td><td>string</td><td>1–998 characters.</td></tr>
+          <tr><td><code>body</code></td><td>string</td><td>Plain-text content. Recommended as a fallback when HTML is supplied.</td></tr>
+          <tr><td><code>html</code></td><td>string | null</td><td>Optional HTML alternative.</td></tr>
+          <tr><td><code>cc</code></td><td>string[] | null</td><td>Up to 10 valid email addresses.</td></tr>
+          <tr><td><code>bcc</code></td><td>string[] | null</td><td>Up to 10 valid email addresses.</td></tr>
+          <tr><td><code>sender_id</code></td><td>string | null</td><td>Omit when using an API token. If supplied, it must match the token's sender.</td></tr>
+        </tbody></table></div>
+        <h3>Accepted response</h3>
+        <div class="code"><span class="label">202 · APPLICATION/JSON</span><pre>{
+  <span class="string">"status"</span>: <span class="string">"queued"</span>,
+  <span class="string">"message_id"</span>: <span class="string">"5f…@sendplug"</span>,
+  <span class="string">"sender_id"</span>: <span class="string">"sender_…"</span>
+}</pre></div>
+        <div class="note">A <code>202</code> response means the job was queued. It does not mean Gmail accepted or delivered the message. Poll the returned <code>message_id</code>.</div>
+        <h3>JavaScript example</h3>
+        <div class="code"><span class="label">SERVER-SIDE JAVASCRIPT</span><pre><span class="accent">const</span> response = <span class="accent">await</span> fetch(
+  `${process.env.SENDPLUG_BASE_URL}/api/v1/send`,
+  {
+    method: <span class="string">"POST"</span>,
+    headers: {
+      Authorization: `Bearer ${process.env.SENDPLUG_API_TOKEN}`,
+      <span class="string">"Content-Type"</span>: <span class="string">"application/json"</span>
+    },
+    body: JSON.stringify({
+      to: [<span class="string">"recipient@example.com"</span>],
+      subject: <span class="string">"Welcome"</span>,
+      body: <span class="string">"Your account is ready."</span>
+    })
+  }
+);
+
+<span class="accent">if</span> (!response.ok) <span class="accent">throw new</span> Error(`Send failed: ${response.status}`);
+<span class="accent">const</span> queued = <span class="accent">await</span> response.json();</pre></div>
+      </section>
+
+      <section id="status">
+        <p class="eyebrow">04 · STATUS</p><h2>Read delivery state</h2>
+        <p>Use the <code>message_id</code> from the send response. The token needs the <code>status</code> scope and must belong to the same sender.</p>
+        <div class="code"><span class="label">SHELL</span><pre>curl <span class="string">"$SENDPLUG_BASE_URL/api/v1/emails/$MESSAGE_ID"</span> \
+  -H <span class="string">"Authorization: Bearer $SENDPLUG_API_TOKEN"</span></pre></div>
+        <div class="status-grid"><div class="status"><code>queued</code><span>Waiting for a worker or retry.</span></div><div class="status"><code>sending</code><span>Reserved against quota and connecting to Gmail.</span></div><div class="status"><code>sent</code><span>Accepted by Gmail.</span></div><div class="status"><code>failed</code><span>Stopped after a permanent or terminal error.</span></div></div>
+        <div class="code"><span class="label">200 · APPLICATION/JSON</span><pre>{
+  <span class="string">"status"</span>: <span class="string">"sent"</span>,
+  <span class="string">"message_id"</span>: <span class="string">"5f…@sendplug"</span>,
+  <span class="string">"to"</span>: [<span class="string">"recipient@example.com"</span>],
+  <span class="string">"subject"</span>: <span class="string">"Welcome"</span>,
+  <span class="string">"sender_id"</span>: <span class="string">"sender_…"</span>,
+  <span class="string">"created_at"</span>: <span class="string">"2026-07-23T10:00:00+00:00"</span>,
+  <span class="string">"updated_at"</span>: <span class="string">"2026-07-23T10:00:02+00:00"</span>,
+  <span class="string">"error"</span>: null,
+  <span class="string">"details"</span>: {
+    <span class="string">"recipients"</span>: [<span class="string">"recipient@example.com"</span>],
+    <span class="string">"sender_id"</span>: <span class="string">"sender_…"</span>,
+    <span class="string">"subject"</span>: <span class="string">"Welcome"</span>,
+    <span class="string">"sent_at"</span>: <span class="string">"2026-07-23T10:00:02+00:00"</span>
+  }
+}</pre></div>
+        <div class="warning note"><strong>“Sent” is not inbox delivery.</strong> It means Gmail accepted the SMTP message. SendPlug does not currently report bounces, opens, clicks, spam placement, or recipient engagement.</div>
+      </section>
+
+      <section id="quotas">
+        <p class="eyebrow">05 · QUOTAS</p><h2>Safety before volume</h2>
+        <p>The default sender safety limit is <strong>400 recipients per UTC day</strong>. The administrator can configure another limit, while Gmail and Google Workspace enforce their own independent limits.</p>
+        <ul><li>Every <code>to</code>, <code>cc</code>, and <code>bcc</code> recipient counts toward the sender's daily limit.</li><li>Quota is reserved atomically by the worker to prevent concurrent jobs from oversending.</li><li>A request can return <code>202</code> and later become <code>failed</code> if no daily quota remains. Read the status record's <code>error</code>.</li><li>Transient Gmail/network failures retry automatically with backoff; permanent validation and recipient failures do not.</li></ul>
+        <p>Status records expire <strong>7 days after their last status update</strong>. Persist any application-level audit information you need beyond that window.</p>
+      </section>
+
+      <section id="errors">
+        <p class="eyebrow">06 · ERRORS</p><h2>HTTP errors</h2>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="HTTP errors"><table class="errors"><thead><tr><th>Status</th><th>Meaning</th><th>Action</th></tr></thead><tbody>
+          <tr><td>400</td><td>The selected sender is unavailable or invalid.</td><td>Confirm the token's sender is still active.</td></tr>
+          <tr><td>401</td><td>The token is missing, malformed, invalid, or revoked.</td><td>Use a current token in the Bearer header.</td></tr>
+          <tr><td>403</td><td>The token lacks the required scope or requests another sender.</td><td>Grant the correct scope; omit <code>sender_id</code>.</td></tr>
+          <tr><td>404</td><td>The status does not exist, expired, or belongs to another sender.</td><td>Check the message ID and token sender.</td></tr>
+          <tr><td>422</td><td>The JSON body failed field validation.</td><td>Inspect the response's <code>detail</code> array.</td></tr>
+        </tbody></table></div>
+        <div class="code"><span class="label">ERROR SHAPE</span><pre>{ <span class="string">"detail"</span>: <span class="string">"Invalid or revoked API token"</span> }</pre></div>
+      </section>
+
+      <section id="security">
+        <p class="eyebrow">07 · SECURITY</p><h2>Production checklist</h2>
+        <ul><li>Call SendPlug from your backend, server action, worker, or trusted function.</li><li>Never embed API tokens in browser JavaScript, mobile binaries, URLs, or analytics events.</li><li>Create separate tokens for separate applications and revoke unused tokens.</li><li>Grant only the scopes each application needs.</li><li>Do not send cold outreach or email people who did not request it.</li></ul>
+      </section>
+    </article>
+  </main>
+  <footer class="footer">SendPlug · Plug in. Send. See.</footer>
+</body>
+</html>

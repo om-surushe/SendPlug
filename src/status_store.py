@@ -51,6 +51,7 @@ def update_status(
     status: str,
     error: Optional[str] = None,
     details: Optional[Dict[str, Any]] = None,
+    clear_error: bool = False,
 ) -> Optional[dict]:
     r = get_redis()
     raw = r.get(f"email:{message_id}")
@@ -59,7 +60,9 @@ def update_status(
     data = json.loads(raw)
     data["status"] = status
     data["updated_at"] = _now()
-    if error is not None:
+    if clear_error:
+        data["error"] = None
+    elif error is not None:
         data["error"] = error
     if details is not None:
         data["details"] = details

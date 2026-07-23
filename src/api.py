@@ -74,12 +74,14 @@ class CampaignCreate(BaseModel):
     recipients: List[EmailStr] = Field(min_length=1, max_length=500)
 
 
+_production = Config.ENVIRONMENT == "production"
 app = FastAPI(
     title="SendPlug API",
     description="Plug-and-play email delivery, dashboards, and analytics powered by connected Google senders",
     version="2.0.0",
-    docs_url="/docs",
+    docs_url=None if _production else "/internal/docs",
     redoc_url=None,
+    openapi_url=None if _production else "/internal/openapi.json",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -259,13 +261,13 @@ def _queue_email(payload: EmailRequest, identity: dict[str, Any]) -> dict[str, A
     return {"status": "queued", "message_id": message_id, "sender_id": sender["id"]}
 
 
-@app.post("/send-email", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/send-email", status_code=status.HTTP_202_ACCEPTED, include_in_schema=False)
 @app.post("/api/v1/send", status_code=status.HTTP_202_ACCEPTED)
 def send_email(payload: EmailRequest, identity: dict = Depends(require_scope("send"))):
     return _queue_email(payload, identity)
 
 
-@app.get("/emails/{message_id}")
+@app.get("/emails/{message_id}", include_in_schema=False)
 @app.get("/api/v1/emails/{message_id}")
 def get_email_status(message_id: str, identity: dict = Depends(require_scope("status"))):
     result = status_store.get_status(message_id)
@@ -417,6 +419,11 @@ def server_status(_: str = Depends(get_admin_user)):
 static_dir = Path(__file__).resolve().parent.parent / "static"
 if static_dir.exists():
     app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+
+    @app.get("/docs", include_in_schema=False)
+    @app.get("/docs/", include_in_schema=False)
+    def developer_guide():
+        return FileResponse(static_dir / "docs" / "index.html")
 
     @app.get("/favicon.ico", include_in_schema=False)
     @app.get("/sendplug-favicon.svg", include_in_schema=False)

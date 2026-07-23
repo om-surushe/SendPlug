@@ -9,7 +9,7 @@ import secrets
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -272,13 +272,13 @@ def _usage(db: sqlite3.Connection, sender_id: str) -> int:
     row = db.execute(
         """SELECT COALESCE(SUM(recipient_count), 0) AS total
            FROM quota_reservations WHERE sender_id = ? AND quota_date = ?""",
-        (sender_id, date.today().isoformat()),
+        (sender_id, datetime.now(timezone.utc).date().isoformat()),
     ).fetchone()
     return int(row["total"])
 
 
 def reserve_quota(sender_id: str, message_id: str, recipient_count: int) -> int:
-    today = date.today().isoformat()
+    today = datetime.now(timezone.utc).date().isoformat()
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         existing = db.execute(

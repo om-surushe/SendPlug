@@ -57,7 +57,7 @@ Create a token in **API Tokens**, select its Gmail sender, and choose `send` and
 
 ```bash
 curl -X POST https://sendplug.example/api/v1/send \
-  -H 'Authorization: Bearer smtp_xxxxxxxx_xxx' \
+  -H "Authorization: Bearer $SENDPLUG_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
     "to": ["recipient@example.com"],
@@ -71,20 +71,12 @@ Poll status:
 
 ```bash
 curl https://sendplug.example/api/v1/emails/MESSAGE_ID \
-  -H 'Authorization: Bearer smtp_xxxxxxxx_xxx'
+  -H "Authorization: Bearer $SENDPLUG_API_TOKEN"
 ```
 
-## Management API
+## Developer guide
 
-The admin UI uses the same CRUD API documented interactively at `/docs`.
-
-| Resource | Create | Read | Update | Delete / deactivate |
-|---|---|---|---|---|
-| Senders | `POST /api/v1/senders` | `GET /api/v1/senders` | `PUT /api/v1/senders/{id}` | `DELETE /api/v1/senders/{id}` |
-| API tokens | `POST /api/v1/tokens` | `GET /api/v1/tokens` | `PUT /api/v1/tokens/{id}` | `DELETE /api/v1/tokens/{id}` |
-| Campaigns | `POST /api/v1/campaigns` | `GET /api/v1/campaigns/{id}` | `PUT /api/v1/campaigns/{id}` | `DELETE /api/v1/campaigns/{id}` |
-
-Used senders are deactivated rather than destroying history. Token deletion revokes the credential. Only draft campaigns can be edited or deleted.
+The curated guide at `/docs` documents only the sender-scoped send and delivery-status APIs. Administrative sender, token, suppression, and campaign operations intentionally remain dashboard-only and are not part of the public API contract.
 
 ## SMTP intake
 
@@ -110,8 +102,11 @@ Backend:
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
+ENVIRONMENT=development python -m src.server
 pytest -q
 ```
+
+Production disables Swagger, ReDoc, and the OpenAPI schema. Local development can use the internal Swagger route at `/internal/docs` when `ENVIRONMENT=development`.
 
 Frontend:
 

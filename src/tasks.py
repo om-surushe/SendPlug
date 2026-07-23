@@ -127,7 +127,7 @@ def send_email_task(
         sender = get_sender(sender_id)
         msg, recipients = _build_mime_message(payload, sender["email"])
         reserve_quota(sender_id, message_id, len(recipients))
-        update_status(message_id, "sending", details={"sender_id": sender_id})
+        update_status(message_id, "sending", details={"sender_id": sender_id}, clear_error=True)
         try:
             client = _get_smtp_connection(sender)
             client.send_message(msg, from_addr=sender["email"], to_addrs=recipients)

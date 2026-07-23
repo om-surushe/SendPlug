@@ -17,6 +17,7 @@ x-common-env: &common-env
   HTTP_PORT: ${HTTP_PORT:-8000}
   API_PREFIX: ${API_PREFIX:-/api/v1}
   DEBUG: ${DEBUG:-false}
+  ENVIRONMENT: ${ENVIRONMENT:-production}
   ADMIN_ORIGIN: ${ADMIN_ORIGIN:-https://smtp.nirmaker.com}
   PUBLIC_URL: ${PUBLIC_URL:-https://smtp.nirmaker.com}
   JWT_SECRET_FILE: /run/secrets/jwt_secret

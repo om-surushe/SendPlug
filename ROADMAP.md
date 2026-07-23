@@ -2,13 +2,13 @@
 
 This file records deferred product work. Items here are not commitments to a release date.
 
-## Public developer guide and private internal schema ([#2](https://github.com/om-surushe/SendPlug/issues/2))
+## Public developer guide and private internal schema ([#2](https://github.com/om-surushe/SendPlug/issues/2)) — completed
 
-- Replace the sidebar link to FastAPI Swagger with a curated developer guide.
-- Document only the customer-facing send and delivery-status APIs.
-- Include authentication, sender-scoped tokens, request fields, responses, errors, quotas, and copyable examples.
-- Disable public Swagger, ReDoc, and OpenAPI schema routes in production.
-- Keep internal admin and campaign-management endpoints out of the public guide.
+- `/docs` serves the curated customer guide for sender-scoped send and delivery-status APIs.
+- The guide covers authentication, request fields, responses, errors, quotas, retries, and copyable examples.
+- Production disables Swagger, ReDoc, and OpenAPI schema routes.
+- Development exposes the complete internal schema only at `/internal/docs` when `ENVIRONMENT=development`.
+- Internal admin, sender, token, suppression, and campaign-management endpoints are excluded from public documentation.
 
 ## Product name and identity ([naming #6](https://github.com/om-surushe/SendPlug/issues/6), [favicon and identity #1](https://github.com/om-surushe/SendPlug/issues/1))
 

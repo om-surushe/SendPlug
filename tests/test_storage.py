@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timezone
 
 from src.config import Config
 from src import storage
@@ -75,6 +76,23 @@ def test_quota_is_atomic_and_retry_idempotent(tmp_path):
         assert "limit" in str(exc).lower()
     else:
         raise AssertionError("quota overflow was accepted")
+
+
+def test_quota_uses_utc_calendar_day(tmp_path, monkeypatch):
+    fresh_db(tmp_path)
+    sender = storage.create_sender("Primary", "sender@example.com", "abcdefghijklmnop", 2)
+    real_datetime = datetime
+    seen_timezones = []
+
+    class Clock:
+        @classmethod
+        def now(cls, tz=None):
+            seen_timezones.append(tz)
+            return real_datetime(2026, 7, 23, 23, 59, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(storage, "datetime", Clock)
+    storage.reserve_quota(sender["id"], "message-utc", 1)
+    assert seen_timezones and all(tz is timezone.utc for tz in seen_timezones)
 
 
 def test_unsubscribe_token_and_suppression(tmp_path):
