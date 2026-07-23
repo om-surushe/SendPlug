@@ -125,7 +125,7 @@ td strong { color: #f4f4f6; display: block; margin-bottom: 3px; }
 .table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-color: #555 transparent; -webkit-overflow-scrolling: touch; }
 .table-wrap:focus-visible { outline: 2px solid var(--yellow); outline-offset: -2px; }
 
-@media (max-width: 850px) {
+@media (max-width: 960px) {
   .app-shell { display: block; }
   .sidebar { position: fixed; z-index: 50; inset: auto 0 0; width: 100%; height: auto; padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); border: 0; border-top: 1px solid var(--line); background: rgba(10,10,10,.96); backdrop-filter: blur(14px); }
   .logo, .sidebar-foot { display: none; }
@@ -145,7 +145,7 @@ td strong { color: #f4f4f6; display: block; margin-bottom: 3px; }
   .form-grid { grid-template-columns: 1fr; }
   .toolbar, .sender-card { align-items: stretch; flex-direction: column; }
   .toolbar .primary, .actions, .actions button { width: 100%; }
-  .primary, .ghost, .close { min-height: 44px; }
+  .primary, .ghost, .close, input, select, textarea { min-height: 44px; }
   .close { min-width: 44px; }
   .sender-icon { flex: 0 0 38px; }
   .secret-box { grid-template-columns: 1fr; }
