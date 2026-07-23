@@ -523,9 +523,10 @@ def list_api_tokens(account_id: str) -> list[dict[str, Any]]:
         rows = db.execute(
             """SELECT t.id, t.name, t.prefix, t.scopes, t.sender_id, t.created_at,
                       t.last_used_at, t.revoked_at, s.name AS sender_name, s.email AS sender_email
-               FROM api_tokens t JOIN senders s ON s.id = t.sender_id
-               WHERE s.account_id = ? ORDER BY t.created_at DESC""",
-            (account_id,),
+               FROM api_tokens t LEFT JOIN senders s ON s.id = t.sender_id
+               WHERE s.account_id = ? OR (t.sender_id IS NULL AND ? = ?)
+               ORDER BY t.created_at DESC""",
+            (account_id, account_id, LEGACY_ACCOUNT_ID),
         ).fetchall()
         return [dict(row) | {"scopes": json.loads(row["scopes"])} for row in rows]
 

@@ -43,6 +43,7 @@ def test_existing_unscoped_tokens_are_revoked_during_migration(tmp_path):
         row = db.execute("SELECT sender_id, revoked_at FROM api_tokens").fetchone()
     assert row["sender_id"] is None
     assert row["revoked_at"] is not None
+    assert [item["id"] for item in storage.list_api_tokens(ACCOUNT)] == ["1"]
 
 
 def test_legacy_data_is_backfilled_to_recovery_account(tmp_path):
