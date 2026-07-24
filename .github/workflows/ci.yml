@@ -85,7 +85,7 @@ jobs:
       - run: bunx --bun prisma migrate deploy
         working-directory: packages/database
       - run: bun run typecheck
-      - run: bun test apps/api/test/app.test.ts packages/contracts/test/email-job.test.ts
+      - run: bun run test
       - run: bun test test/prisma.integration.test.ts
         working-directory: packages/database
       - name: Verify Elysia runtime health
@@ -100,3 +100,4 @@ jobs:
           cat /tmp/sendplug-bun-api.log
           exit 1
       - run: bun run build
+      - run: docker build -f Dockerfile.revamp-api -t sendplug-revamp:${{ github.sha }} .

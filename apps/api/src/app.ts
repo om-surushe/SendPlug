@@ -2,11 +2,13 @@ import { openapi } from "@elysiajs/openapi";
 import { Elysia, t } from "elysia";
 import type { Database } from "@sendplug/database";
 import type Redis from "ioredis";
+import { createAuthRoutes, type AuthDependencies } from "./auth";
 
 export type AppDependencies = {
   database: Pick<Database, "$queryRawUnsafe">;
   redis: Pick<Redis, "ping">;
   nodeEnv: "development" | "test" | "production";
+  auth?: AuthDependencies;
 };
 
 const checkSchema = t.Object({
@@ -16,6 +18,8 @@ const checkSchema = t.Object({
 
 export function createApp(dependencies: AppDependencies) {
   const app = new Elysia({ name: "sendplug-api" });
+
+  if (dependencies.auth) app.use(createAuthRoutes(dependencies.auth));
 
   if (dependencies.nodeEnv !== "production") {
     app.use(
