@@ -40,15 +40,15 @@ export type AuthDependencies = {
   secureCookies: boolean;
 };
 
-function sessionCookie(value: string, secure: boolean): string {
+function sessionCookie(value: string, secure: boolean, clear = false): string {
   const name = secure ? "__Host-sendplug_session" : "sendplug_session";
   return [
-    `${name}=${encodeURIComponent(value)}`,
+    `${name}=${clear ? "" : encodeURIComponent(value)}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
     secure ? "Secure" : "",
-    "Max-Age=604800",
+    clear ? "Max-Age=0" : "Max-Age=604800",
   ]
     .filter(Boolean)
     .join("; ");
@@ -70,7 +70,7 @@ function readSessionCookie(request: Request, secure: boolean): string | null {
 }
 
 export function createAuthRoutes(dependencies: AuthDependencies) {
-  return new Elysia({ name: "sendplug-workos-auth", prefix: "/auth" })
+  return new Elysia({ name: "sendplug-workos-auth", prefix: "/workos" })
     .get("/login", async () => {
       const authorization = await dependencies.client.getAuthorizationUrlWithPKCE({
         clientId: dependencies.clientId,
@@ -131,5 +131,9 @@ export function createAuthRoutes(dependencies: AuthDependencies) {
         accountId: identity.accountId,
         user: { id: identity.user.id, email: identity.user.email, name: identity.user.name },
       };
+    })
+    .post("/logout", ({ set }) => {
+      set.headers["set-cookie"] = sessionCookie("", dependencies.secureCookies, true);
+      set.status = 204;
     });
 }

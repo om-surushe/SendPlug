@@ -20,7 +20,7 @@ type Dashboard = {
   recent_campaigns: Campaign[];
 };
 type Session = { email: string; account_id: string; account_name: string; role: string; recovery: boolean };
-type AuthConfig = { google: boolean; signups: boolean };
+type WorkOSSession = { accountId: string; user: { id: string; email: string; name: string } };
 
 const storedToken = () => localStorage.getItem("smtp_admin_token") || "";
 
@@ -59,8 +59,6 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 function Login({ initialError = "" }: { initialError?: string }) {
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
-  const [authConfig, setAuthConfig] = useState<AuthConfig>();
-  useEffect(() => { api<AuthConfig>("/auth/config").then(setAuthConfig).catch(() => undefined); }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     const form = new FormData(event.currentTarget);
@@ -79,10 +77,8 @@ function Login({ initialError = "" }: { initialError?: string }) {
       <p className="eyebrow">PLUG-AND-PLAY EMAIL</p>
       <h1 id="login-title">SendPlug</h1>
       <p className="muted">Connect Google, create an API token, and manage every delivery.</p>
-      {authConfig?.google && <>
-        <a className="google-button" href="/auth/google/login">Continue with Google</a>
-        <div className="auth-divider"><span>or use recovery access</span></div>
-      </>}
+      <a className="google-button" href="/workos/login">Continue with Google</a>
+      <div className="auth-divider"><span>or use recovery access</span></div>
       <form onSubmit={submit} className="stack-lg">
         <label>Email<input name="email" type="email" autoComplete="username" required autoFocus /></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
@@ -250,9 +246,26 @@ function CampaignTable({ campaigns, actions }: { campaigns: Campaign[]; actions?
   return <div className="table-wrap" tabIndex={0} role="region" aria-label="Campaigns table"><table><thead><tr><th>Campaign</th><th>Status</th><th>Recipients</th><th>Sent</th><th>Failed</th><th>Created</th>{actions && <th />}</tr></thead><tbody>{campaigns.map(item => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.subject}</small></td><td><span className={`badge ${item.status}`}>{item.status}</span></td><td>{item.total}</td><td>{item.sent}</td><td>{item.failed}</td><td>{formatDate(item.created_at)}</td>{actions && <td>{actions(item)}</td>}</tr>)}</tbody></table></div>;
 }
 
+function WorkOSWelcome({ session }: { session: WorkOSSession }) {
+  async function signOut() {
+    await fetch("/workos/logout", { method: "POST" });
+    location.reload();
+  }
+  return <main className="login-shell">
+    <section className="login-card" aria-labelledby="welcome-title">
+      <BrandMark />
+      <p className="eyebrow">WORKOS CONNECTED</p>
+      <h1 id="welcome-title">Welcome, {session.user.name}</h1>
+      <p className="muted">Your SendPlug account is ready. Gmail connection and the new dashboard are being enabled next.</p>
+      <button className="ghost wide" onClick={() => void signOut()}>Sign out</button>
+    </section>
+  </main>;
+}
+
 function App() {
   const loginCode = new URLSearchParams(location.search).get("login_code");
   const [oauthState, setOauthState] = useState<"idle" | "loading" | "failed">(loginCode ? "loading" : "idle");
+  const [workosSession, setWorkosSession] = useState<WorkOSSession | null | undefined>(storedToken() ? null : undefined);
   useEffect(() => {
     if (!loginCode) return;
     api<{ token: string }>("/auth/exchange", { method: "POST", body: JSON.stringify({ code: loginCode }) })
@@ -266,8 +279,13 @@ function App() {
         setOauthState("failed");
       });
   }, [loginCode]);
-  if (oauthState === "loading") return <main className="login-shell"><div className="empty">Completing Google sign-in…</div></main>;
+  useEffect(() => {
+    if (workosSession !== undefined) return;
+    api<WorkOSSession>("/workos/me").then(setWorkosSession).catch(() => setWorkosSession(null));
+  }, [workosSession]);
+  if (oauthState === "loading" || workosSession === undefined) return <main className="login-shell"><div className="empty">Completing sign-in…</div></main>;
   if (oauthState === "failed") return <Login initialError="Google sign-in expired. Try again or use recovery access." />;
+  if (workosSession) return <WorkOSWelcome session={workosSession} />;
   return storedToken() ? <Layout /> : <Login />;
 }
 

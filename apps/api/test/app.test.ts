@@ -52,7 +52,7 @@ function authDependencies() {
       },
       clientId: "client_test",
       cookiePassword: "a".repeat(32),
-      redirectUri: "https://app.example.com/auth/callback",
+      redirectUri: "https://app.example.com/workos/callback",
       secureCookies: true,
     },
     states,
@@ -97,7 +97,7 @@ describe("WorkOS authentication", () => {
       nodeEnv: "test",
       auth: auth.dependencies,
     });
-    const response = await app.handle(new Request("http://localhost/auth/login"));
+    const response = await app.handle(new Request("http://localhost/workos/login"));
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("https://auth.example.com/authorize");
     expect(auth.states.get("workos-state")).toBe("workos-verifier");
@@ -111,7 +111,7 @@ describe("WorkOS authentication", () => {
       nodeEnv: "test",
       auth: auth.dependencies,
     });
-    const request = () => new Request("http://localhost/auth/callback?code=code&state=missing");
+    const request = () => new Request("http://localhost/workos/callback?code=code&state=missing");
     expect((await app.handle(request())).status).toBe(400);
     expect(auth.authenticateCalls()).toBe(0);
   });
@@ -124,7 +124,20 @@ describe("WorkOS authentication", () => {
       nodeEnv: "test",
       auth: { ...auth.dependencies, secureCookies: false },
     });
-    expect((await app.handle(new Request("http://localhost/auth/me"))).status).toBe(401);
+    expect((await app.handle(new Request("http://localhost/workos/me"))).status).toBe(401);
+  });
+
+  test("clears the sealed session on logout", async () => {
+    const auth = authDependencies();
+    const app = createApp({
+      database: healthyDatabase as never,
+      redis: healthyRedis as never,
+      nodeEnv: "production",
+      auth: auth.dependencies,
+    });
+    const response = await app.handle(new Request("http://localhost/workos/logout", { method: "POST" }));
+    expect(response.status).toBe(204);
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 
   test("creates a secure sealed-session cookie", async () => {
@@ -137,7 +150,7 @@ describe("WorkOS authentication", () => {
       auth: auth.dependencies,
     });
     const response = await app.handle(
-      new Request("http://localhost/auth/callback?code=code&state=workos-state"),
+      new Request("http://localhost/workos/callback?code=code&state=workos-state"),
     );
     expect(response.status).toBe(302);
     expect(response.headers.get("set-cookie")).toContain("__Host-sendplug_session=");
@@ -186,12 +199,12 @@ describe("environment", () => {
       WORKOS_CLIENT_ID: "client_test",
       WORKOS_API_KEY: "test-key",
       WORKOS_COOKIE_PASSWORD: "a".repeat(32),
-      WORKOS_REDIRECT_URI: "https://app.example.com/auth/callback",
+      WORKOS_REDIRECT_URI: "https://app.example.com/workos/callback",
     }).workos).toEqual({
       clientId: "client_test",
       apiKey: "test-key",
       cookiePassword: "a".repeat(32),
-      redirectUri: "https://app.example.com/auth/callback",
+      redirectUri: "https://app.example.com/workos/callback",
     });
   });
 });
