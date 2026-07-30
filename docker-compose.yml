@@ -1,0 +1,157 @@
+# SendPlug: plug-and-play email delivery + dashboard + Redis/Celery queue.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "25m"
+    max-file: "3"
+
+x-common-env: &common-env
+  SMTP_HOST: ${SMTP_HOST:-0.0.0.0}
+  SMTP_PORT: ${SMTP_PORT:-8025}
+  ENABLE_AUTH: ${ENABLE_AUTH:-true}
+  SMTP_AUTH_USERNAME: ${SMTP_AUTH_USERNAME}
+  SMTP_AUTH_PASSWORD: ${SMTP_AUTH_PASSWORD}
+  ENABLE_TLS: ${ENABLE_TLS:-false}
+  MAX_MESSAGE_SIZE: ${MAX_MESSAGE_SIZE:-26214400}
+  HTTP_HOST: ${HTTP_HOST:-0.0.0.0}
+  HTTP_PORT: ${HTTP_PORT:-8000}
+  API_PREFIX: ${API_PREFIX:-/api/v1}
+  DEBUG: ${DEBUG:-false}
+  ENVIRONMENT: ${ENVIRONMENT:-production}
+  ADMIN_ORIGIN: ${ADMIN_ORIGIN:-https://smtp.nirmaker.com}
+  PUBLIC_URL: ${PUBLIC_URL:-https://smtp.nirmaker.com}
+  JWT_SECRET_FILE: /run/secrets/jwt_secret
+  JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+  ADMIN_EMAIL: ${ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  FLOWER_USER: ${FLOWER_USER:?Set FLOWER_USER in .env}
+  FLOWER_PASSWORD: ${FLOWER_PASSWORD:?Set FLOWER_PASSWORD in .env}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+  AUTH_SIGNUPS_ENABLED: ${AUTH_SIGNUPS_ENABLED:-true}
+  SEND_BURST_LIMIT: ${SEND_BURST_LIMIT:-10}
+  SEND_BURST_WINDOW_SECONDS: ${SEND_BURST_WINDOW_SECONDS:-60}
+  CREDENTIAL_KEY_FILE: /run/secrets/credential_key
+  API_TOKEN_PEPPER_FILE: /run/secrets/token_pepper
+  DATABASE_PATH: /app/data/app.db
+  REDIS_URL: redis://redis:6379/0
+
+x-runtime: &runtime
+  environment: *common-env
+  volumes:
+    - app-data:/app/data
+  secrets:
+    - credential_key
+    - token_pepper
+    - jwt_secret
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: smtp-redis
+    restart: unless-stopped
+    logging: *default-logging
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    networks:
+      - smtp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  smtp-api:
+    <<: *runtime
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smtp-api
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:${SMTP_PORT:-8025}:8025"
+      - "127.0.0.1:${HTTP_PORT:-8000}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - smtp-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8000/health && nc -z localhost 8025"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *runtime
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    command: >
+      celery -A src.tasks.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=celery
+      --hostname=worker@%h
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - smtp-network
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.tasks.celery_app inspect ping -d worker@$${HOSTNAME} --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  flower:
+    <<: *runtime
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smtp-flower
+    restart: unless-stopped
+    logging: *default-logging
+    command: >
+      celery -A src.tasks.celery_app flower
+      --port=5555
+      --basic_auth=${FLOWER_USER:?Set FLOWER_USER in .env}:${FLOWER_PASSWORD:?Set FLOWER_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5555"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    ports:
+      - "127.0.0.1:5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    networks:
+      - smtp-network
+
+volumes:
+  redis-data:
+  app-data:
+
+networks:
+  smtp-network:
+    driver: bridge
+
+secrets:
+  credential_key:
+    file: ./secrets/credential_key
+  token_pepper:
+    file: ./secrets/token_pepper
+  jwt_secret:
+    file: ./secrets/jwt_secret

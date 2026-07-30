@@ -1,0 +1,3 @@
+[allowlist]
+description = "Synthetic Fernet compatibility fixture"
+paths = ['''packages/database/test/senders\.test\.ts''']

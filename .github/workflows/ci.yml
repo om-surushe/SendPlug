@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "revamp/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bun:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: sendplug
+          POSTGRES_USER: sendplug
+          POSTGRES_PASSWORD: localtest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sendplug -d sendplug"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      API_HOST: 127.0.0.1
+      API_PORT: 13000
+      DATABASE_URL: postgresql://sendplug:localtest@127.0.0.1:5432/sendplug?schema=public
+      REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - run: bun install --frozen-lockfile
+      - run: bun run db:generate
+      - run: bun run db:validate
+      - run: bun run test
+      - run: bun run db:deploy
+      - run: bun run test:integration
+      - run: bun run typecheck
+      - run: bun run build
+      - name: Verify API health
+        env:
+          PUBLIC_ORIGIN: http://127.0.0.1:13000
+          SESSION_SECRET: ci-session-secret-at-least-thirty-two-bytes
+          RECOVERY_ADMIN_EMAIL: admin@example.com
+          RECOVERY_ADMIN_PASSWORD: ci-strong-recovery-password
+          API_TOKEN_PEPPER_FILE: /tmp/sendplug-token-pepper
+          CREDENTIAL_KEY_FILE: /tmp/sendplug-credential-key
+        run: |
+          printf '%s' '0123456789abcdef0123456789abcdef' > /tmp/sendplug-token-pepper
+          printf '%s' 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=' > /tmp/sendplug-credential-key
+          bun apps/api/src/index.ts >/tmp/sendplug-api.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:13000/health | grep -q '"healthy"' && exit 0
+            sleep 1
+          done
+          cat /tmp/sendplug-api.log
+          exit 1
+
+  frontend-and-containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run typecheck
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+      - name: Validate production Compose model
+        run: |
+          mkdir -p secrets
+          printf '%s' 'synthetic-fernet-key' > secrets/credential_key
+          printf '%s' 'synthetic-token-pepper' > secrets/token_pepper
+          SENDPLUG_IMAGE_TAG=${{ github.sha }} \
+          POSTGRES_PASSWORD=synthetic-postgres-password \
+          DATABASE_URL='postgresql://sendplug:synthetic-postgres-password@postgres:5432/sendplug?schema=public' \
+          PUBLIC_ORIGIN=https://sendplug.example \
+          SESSION_SECRET=synthetic-session-secret-at-least-thirty-two-bytes \
+          RECOVERY_ADMIN_EMAIL=admin@example.com \
+          RECOVERY_ADMIN_PASSWORD=synthetic-strong-recovery-password \
+          docker compose -f compose.revamp.prod.yml config -q
+      - run: docker build -f Dockerfile.revamp-api -t sendplug-api:${{ github.sha }} .
+      - run: docker build -f Dockerfile.revamp-worker -t sendplug-worker:${{ github.sha }} .
+
+  python-rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q

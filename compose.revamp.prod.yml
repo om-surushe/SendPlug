@@ -1,0 +1,127 @@
+name: sendplug
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: sendplug
+      POSTGRES_USER: sendplug
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a generated POSTGRES_PASSWORD}
+    volumes:
+      - sendplug-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sendplug -d sendplug"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - sendplug-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  migrate:
+    image: sendplug-api:${SENDPLUG_IMAGE_TAG:?set SENDPLUG_IMAGE_TAG to the release commit}
+    build:
+      context: .
+      dockerfile: Dockerfile.revamp-api
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set the PostgreSQL DATABASE_URL}
+    working_dir: /app/packages/database
+    command: ["bunx", "--bun", "prisma", "migrate", "deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: sendplug-api:${SENDPLUG_IMAGE_TAG:?set SENDPLUG_IMAGE_TAG to the release commit}
+    user: "${SENDPLUG_RUNTIME_UID:-1000}:${SENDPLUG_RUNTIME_GID:-1000}"
+    build:
+      context: .
+      dockerfile: Dockerfile.revamp-api
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:?set the PostgreSQL DATABASE_URL}
+      REDIS_URL: redis://redis:6379/0
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set the public HTTPS origin}
+      AUTH_SIGNUPS_ENABLED: ${AUTH_SIGNUPS_ENABLED:-true}
+      SESSION_SECRET: ${SESSION_SECRET:?set a generated SESSION_SECRET}
+      RECOVERY_ADMIN_EMAIL: ${RECOVERY_ADMIN_EMAIL:?set the recovery administrator email}
+      RECOVERY_ADMIN_PASSWORD: ${RECOVERY_ADMIN_PASSWORD:?set a generated recovery password}
+      API_TOKEN_PEPPER_FILE: /run/secrets/token_pepper
+      CREDENTIAL_KEY_FILE: /run/secrets/credential_key
+      SEND_BURST_LIMIT: ${SEND_BURST_LIMIT:-10}
+      SEND_BURST_WINDOW_SECONDS: ${SEND_BURST_WINDOW_SECONDS:-60}
+      STATIC_DIR: /app/static
+      WORKOS_API_KEY: ${WORKOS_API_KEY:-}
+      WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID:-}
+      WORKOS_COOKIE_PASSWORD: ${WORKOS_COOKIE_PASSWORD:-}
+      WORKOS_REDIRECT_URI: ${WORKOS_REDIRECT_URI:-}
+    secrets:
+      - credential_key
+      - token_pepper
+    ports:
+      - "127.0.0.1:${REVAMP_API_PORT:-8100}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    image: sendplug-worker:${SENDPLUG_IMAGE_TAG:?set SENDPLUG_IMAGE_TAG to the release commit}
+    user: "${SENDPLUG_RUNTIME_UID:-1000}:${SENDPLUG_RUNTIME_GID:-1000}"
+    build:
+      context: .
+      dockerfile: Dockerfile.revamp-worker
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set the PostgreSQL DATABASE_URL}
+      REDIS_URL: redis://redis:6379/0
+      CREDENTIAL_KEY_FILE: /run/secrets/credential_key
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+    secrets:
+      - credential_key
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bun", "--filter", "@sendplug/worker", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+secrets:
+  credential_key:
+    file: ${CREDENTIAL_KEY_FILE_HOST:-./secrets/credential_key}
+  token_pepper:
+    file: ${TOKEN_PEPPER_FILE_HOST:-./secrets/token_pepper}
+
+volumes:
+  sendplug-postgres:
+  sendplug-redis:

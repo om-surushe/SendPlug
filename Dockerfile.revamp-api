@@ -1,0 +1,27 @@
+FROM oven/bun:1.3.5-alpine
+
+WORKDIR /app
+RUN apk add --no-cache nodejs npm openssl
+
+COPY package.json bun.lock tsconfig.base.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/worker/package.json apps/worker/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/database/package.json packages/database/package.json
+RUN bun install --frozen-lockfile
+
+COPY web/package.json web/package-lock.json web/
+RUN npm ci --prefix web
+
+COPY apps/api apps/api
+COPY apps/worker apps/worker
+COPY packages/contracts packages/contracts
+COPY packages/database packages/database
+COPY web web
+
+ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build
+RUN bun run db:generate && npm run build --prefix web && mkdir -p /app/static && cp -R web/dist/. /app/static/ \
+  && chmod -R a+rX /app
+
+USER bun
+CMD ["bun", "--filter", "@sendplug/api", "start"]

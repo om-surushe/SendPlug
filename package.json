@@ -1,0 +1,23 @@
+{
+  "name": "sendplug",
+  "private": true,
+  "packageManager": "bun@1.3.5",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "overrides": {
+    "find-my-way": "9.7.0"
+  },
+  "scripts": {
+    "dev:api": "bun --filter @sendplug/api dev",
+    "build": "bun run --filter '*' build",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun test apps/api/test apps/worker/test packages/contracts/test packages/database/test/import-sqlite.test.ts packages/database/test/local-auth.test.ts packages/database/test/provider-crypto.test.ts packages/database/test/senders.test.ts packages/database/test/tokens.test.ts",
+    "test:integration": "bun --filter @sendplug/database test:integration",
+    "db:generate": "bun --filter @sendplug/database db:generate",
+    "db:migrate": "bun --filter @sendplug/database db:migrate",
+    "db:validate": "bun --filter @sendplug/database db:validate",
+    "db:deploy": "cd packages/database && bunx --bun prisma migrate deploy"
+  }
+}
