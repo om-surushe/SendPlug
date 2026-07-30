@@ -5,10 +5,13 @@
   <a href="https://github.com/om-surushe/SendPlug/actions/workflows/ci.yml"><img src="https://github.com/om-surushe/SendPlug/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://sendplug.nirmaker.com"><img src="https://img.shields.io/badge/hosted_beta-live-brightgreen.svg" alt="Hosted beta live" /></a>
+  <img src="https://img.shields.io/badge/status-complete-informational.svg" alt="Project status: complete" />
 </p>
 <p align="center">Vibe coded by <a href="https://omsurushe.bio.link">Om Surushe</a>.</p>
 
 Self-host a simple transactional email API through Gmail or Google Workspace without paying for another email platform. The [hosted beta](https://sendplug.nirmaker.com) is a try-before-you-deploy instance of the same open-source Bun/Elysia, React, PostgreSQL, and Redis/BullMQ stack. The preserved Python/SQLite release remains the production rollback path.
+
+> **Project status:** Complete. The current feature set is final; no future feature roadmap is planned.
 
 <p align="center"><a href="https://sendplug.nirmaker.com"><img src="docs/images/sendplug-home.png" alt="SendPlug hosted beta homepage" /></a></p>
 
@@ -129,4 +132,4 @@ Architecture and operational details are in [`docs/architecture/bun-revamp.md`](
 
 ## Security and license
 
-Review the operator trust boundaries and incident guidance in [SECURITY.md](SECURITY.md). Contributions are welcome through the concise [contribution guide](CONTRIBUTING.md). SendPlug is licensed under the [MIT License](LICENSE) © Om Surushe.
+Review the operator trust boundaries and incident guidance in [SECURITY.md](SECURITY.md). SendPlug is licensed under the [MIT License](LICENSE) © Om Surushe.
